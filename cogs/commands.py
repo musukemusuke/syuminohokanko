@@ -4,8 +4,9 @@ from discord import app_commands
 from discord.ext import commands
 
 from utils import build_archive_embed, search_archive_data, delete_category_logs
+from views import CategorySelectView
 
-# 💡 グローバル変数を他のファイルからでも安全に書き換え・共有できる設計に固定
+# グローバル変数・キャッシュ
 post_id, archive_id, storage_vc_id = None, None, None
 cached_folders = {} # {user_id: [folder_names]}
 
@@ -94,6 +95,35 @@ class CommandsCog(commands.Cog):
         for guild in self.bot.guilds:
             load_channel_ids(guild)
         await sync_all_cached_folders(self.bot)
+
+    # 💡 【完全自分専用仕様】URLを最初から誰にも見られずにフォルダへ格納する新しいコマンド
+    @app_commands.command(name="archive_add", description="【自分専用表示】URLを指定したフォルダへ安全に格納します")
+    @app_commands.describe(url="保存したいウェブサイトや動画のURL")
+    async def archive_add(self, interaction: discord.Interaction, url: str):
+        global post_id, storage_vc_id
+        if not storage_vc_id and interaction.guild: load_channel_ids(interaction.guild)
+        
+        user_id = interaction.user.id
+        folders = cached_folders.get(user_id, [])
+
+        if not folders:
+            await sync_all_cached_folders(self.bot)
+            folders = cached_folders.get(user_id, [])
+            if not folders:
+                await interaction.response.send_message("💡 まだ仕分けフォルダがありません。まずは `/category_add` で作成してください。", ephemeral=True)
+                return
+
+        # 💡 スラッシュコマンド起点なので、最初から100%確実に自分だけにしか見えないセレクトメニューが出せます！
+        view = CategorySelectView(reversed(folders), [url], post_id, storage_vc_id)
+        embed = discord.Embed(
+            title="📥 URLの保管先を選択",
+            description=f"対象のURL:\n{url}\n\nどのフォルダにアーカイブしますか？（あなただけに表示されています）",
+            color=0x2f3136
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+        if interaction.guild:
+            self.bot.loop.create_task(self.update_archive_channel_embed(interaction.guild, interaction.user.id, interaction.user.display_name))
 
     @app_commands.command(name="category_add", description="新しくデータを仕分けるフォルダカテゴリーを追加します")
     async def category_add(self, interaction: discord.Interaction, name: str):
