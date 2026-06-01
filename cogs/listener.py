@@ -13,14 +13,16 @@ class ListenerCog(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author.bot: return
 
-        # 💡 commands.py 側から共有IDとフォルダキャッシュを安全にインポート
-        import cogs.commands as cmd_module
-        if message.guild and (not cmd_module.post_id or not cmd_module.storage_vc_id):
-            cmd_module.load_channel_ids(message.guild)
+        # 💡 【重要修正】循環インポートエラーを100%回避するため、
+        # cogs.commands モジュールから直接変数とキャッシュを安全に呼び出します
+        import cogs.commands as cmd
+        
+        if message.guild and (not cmd.post_id or not cmd.storage_vc_id):
+            cmd.load_channel_ids(message.guild)
 
-        if message.channel.id != cmd_module.post_id: return
+        if message.channel.id != cmd.post_id: return
 
-        # URLの抽出判定
+        # URLの抽出
         url_match = re.search(r"https?://[^\s]+", message.content)
         if not url_match: return
 
@@ -28,12 +30,12 @@ class ListenerCog(commands.Cog):
         memo_text = message.content.strip()
         user_id = message.author.id
 
-        # 💡 メモリキャッシュから一瞬で引き出すため、絶対にタイムアウトしません
-        folders = cmd_module.cached_folders.get(user_id, [])
+        # 記憶されたメモリ（キャッシュ）から引き出す
+        folders = cmd.cached_folders.get(user_id, [])
 
         if not folders:
-            await cmd_module.sync_all_cached_folders(self.bot)
-            folders = cmd_module.cached_folders.get(user_id, [])
+            await cmd.sync_all_cached_folders(self.bot)
+            folders = cmd.cached_folders.get(user_id, [])
             if not folders:
                 await message.reply("💡 まだ仕分けフォルダがありません。まずは `/category_add` で作成してください！")
                 return
@@ -45,7 +47,7 @@ class ListenerCog(commands.Cog):
         # Webhookを生成して、最初から完全エフェメラル（自分限定）でメニューを送信
         try:
             webhook = await message.channel.create_webhook(name="Archiver-Proxy")
-            view = CategorySelectView(reversed(folders), url_list, cmd_module.post_id, cmd_module.storage_vc_id)
+            view = CategorySelectView(reversed(folders), url_list, cmd.post_id, cmd.storage_vc_id)
             embed = discord.Embed(
                 title="📥 URLの保管先を選択",
                 description=f"対象のURL:\n{url_list}\n\nどのフォルダにアーカイブしますか？（あなただけに表示されています）",
@@ -62,7 +64,7 @@ class ListenerCog(commands.Cog):
         except Exception as e:
             print(f"[ERROR] エフェメラル配信エラー: {e}")
 
-        # 画面の自動更新をバックグラウンド実行（commands.py内の関数を再利用）
+        # 画面の自動更新
         async def refresh_task():
             await asyncio.sleep(2)
             cmd_cog = self.bot.get_cog("CommandsCog")
