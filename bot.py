@@ -8,6 +8,14 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
+# 💡 【遮断対策】bot.py側でメッセージを受け取ったら、Cogs（BookmarkCog）へ通信を100%丸ごとパスします
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+    # これを書くことで、別ファイルに分けた Cog 内の on_message が遮断されずに100%発火します
+    await bot.process_commands(message)
+
 @bot.event
 async def on_ready():
     print(f"✨ ログインしました: {bot.user.name}")
@@ -19,7 +27,6 @@ async def on_ready():
 
 async def main():
     async with bot:
-        # 💡 作成した2つのファイルを読み込みます
         cogs_to_load = ["cogs.admin", "cogs.bookmark"]
         for cog in cogs_to_load:
             try:
