@@ -1,64 +1,72 @@
 import discord
 import traceback
 import asyncio
+from typing import Dict, List, Optional, Tuple
 
-async def build_archive_embed(bot, vc_id, user_id, display_name):
+
+# ====================== 共通ヘルパー ======================
+def _parse_log_message(content: str) -> Dict[str, str]:
+    """VCのログメッセージをパースする共通関数"""
+    data = {}
+    lines = content.split("\n")
+    
+    for line in lines:
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+            
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        
+        # 余計な引用符・括弧を除去
+        for char in ["'", '"', "[", "]"]:
+            if value.startswith(char) and value.endswith(char):
+                value = value[1:-1].strip()
+        
+        data[key] = value
+    
+    return data
+
+
+# ====================== メイン関数 ======================
+async def build_archive_embed(bot, vc_id: int, user_id: int, display_name: str):
     storage_vc = bot.get_channel(vc_id)
     if not storage_vc:
         return None
 
-    folders = []
-    folder_urls = {} # {folder_name: folder_top_url}
-    archive_data = {}
+    folders: List[str] = []
+    folder_representative: Dict[str, str] = {}      # フォルダ作成時の代表URL
+    archive_data: Dict[str, List[str]] = {}         # {folder: [urls]}
 
     try:
-        async for msg in storage_vc.history(limit=1000):
-            content = msg.content
-            lines = content.split("\n")
-            
-            if content.startswith("🆕NEW_FOLDER:"):
-                try:
-                    f_name, u_id_text, f_url = None, None, None
-                    for line in lines:
-                        if line.startswith("🆕NEW_FOLDER:"):
-                            f_name = line.replace("🆕NEW_FOLDER:", "").strip()
-                        elif line.startswith("👤USER:"):
-                            u_id_text = line.replace("👤USER:", "").strip()
-                        elif line.startswith("🔗LINK:"):
-                            f_url = line.replace("🔗LINK:", "").strip()
-                    
-                    if f_name and u_id_text:
-                        if int(u_id_text) == user_id and f_name not in folders:
-                            folders.append(f_name)
-                            if f_url:
-                                folder_urls[f_name] = f_url
-                            if f_name not in archive_data:
-                                archive_data[f_name] = []
-                except:
-                    continue
-                    
-            elif content.startswith("📁FOLDER:"):
-                try:
-                    f_name, u_id_text, link = None, None, None
-                    for line in lines:
-                        if line.startswith("📁FOLDER:"):
-                            raw_f = line.replace("📁FOLDER:", "").strip()
-                            if raw_f.startswith("[") and raw_f.endswith("]"): raw_f = raw_f[1:-1].strip()
-                            if (raw_f.startswith("'") and raw_f.endswith("'")) or (raw_f.startswith('"') and raw_f.endswith('"')): raw_f = raw_f[1:-1].strip()
-                            f_name = raw_f
-                        elif line.startswith("👤USER:"):
-                            u_id_text = line.replace("👤USER:", "").strip()
-                        elif line.startswith("🔗LINK:"):
-                            link = line.replace("🔗LINK:", "").strip()
-                            
-                    if f_name and u_id_text and link:
-                        if int(u_id_text) == user_id:
-                            if f_name not in archive_data:
-                                archive_data[f_name] = []
-                            if link not in archive_data[f_name]:
-                                archive_data[f_name].append(link)
-                except:
-                    continue
+        async for msg in storage_vc.history(limit=1200):
+            content = msg.content.strip()
+            if not content:
+                continue
+
+            parsed = _parse_log_message(content)
+
+            if "NEW_FOLDER" in content:   # 🆕NEW_FOLDER:
+                f_name = parsed.get("NEW_FOLDER")
+                u_id = int(parsed.get("USER", 0))
+                link = parsed.get("LINK")
+
+                if f_name and u_id == user_id and f_name not in folders:
+                    folders.append(f_name)
+                    if link:
+                        folder_representative[f_name] = link
+                    archive_data.setdefault(f_name, [])
+
+            elif "FOLDER" in content:     # 📁FOLDER:
+                f_name = parsed.get("FOLDER")
+                u_id = int(parsed.get("USER", 0))
+                link = parsed.get("LINK")
+
+                if f_name and u_id == user_id and link:
+                    archive_data.setdefault(f_name, [])
+                    if link not in archive_data[f_name]:
+                        archive_data[f_name].append(link)
 
     except Exception as e:
         traceback.print_exc()
@@ -69,131 +77,114 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
 
     embed = discord.Embed(
         title=f"📚 {display_name} の趣味の保管庫",
-        description="これまでに集めたURLリンクの一覧です。",
+        description="保存したURL一覧です（最新順）",
         color=0x2f3136
     )
-    
+
+    # 新しいフォルダが上に来るように
     for folder in reversed(folders):
-        items = archive_data.get(folder, [])
-        item_links = []
+        urls = archive_data.get(folder, [])
+        lines = []
+
+        # 代表URL（フォルダ作成時のURL）
+        if folder in folder_representative:
+            lines.append(f"⭐ **代表**: {folder_representative[folder]}")
+            if urls:
+                lines.append("")
+
+        # 保存されたURL一覧
+        for url in urls:
+            lines.append(url)
+
+        value = "\n".join(lines) if lines else "（空のフォルダ）"
         
-        # 💡 もしフォルダ自体に代表URLが登録されていれば、リストの先頭にわかりやすく配置
-        if folder in folder_urls:
-            item_links.append(f"⭐ **代表リンク:** {folder_urls[folder]}")
-            if items:
-                item_links.append("──────") # 区切り線
-        
-        for link in items:
-            item_links.append(f"{link}")
-            
-        item_list = "\n".join(item_links) if item_links else "*（空のフォルダです）*"
-        embed.add_field(name=f"📂 {folder}", value=item_list, inline=False)
+        # Embedのvalueは1024文字制限に注意
+        if len(value) > 1000:
+            value = value[:997] + "..."
+
+        embed.add_field(name=f"📂 {folder}", value=value, inline=False)
 
     return embed
 
 
-async def search_archive_data(bot, vc_id, user_id, keyword):
+async def search_archive_data(bot, vc_id: int, user_id: int, keyword: str):
     storage_vc = bot.get_channel(vc_id)
-    embed = discord.Embed(
-        title=f"🔍 「{keyword}」 の検索結果",
-        color=0xd4af37
-    )
-    
+    embed = discord.Embed(title=f"🔍 「{keyword}」の検索結果", color=0xd4af37)
+
     if not storage_vc:
-        embed.description = "❌ 金庫への同期に失敗しました。"
+        embed.description = "❌ データ金庫にアクセスできません。"
         return embed
 
-    found_count = 0
-    results_text = []
+    results = []
+    found = 0
 
     try:
         async for msg in storage_vc.history(limit=1000):
-            content = msg.content
-            if content.startswith("📁FOLDER:"):
-                lines = content.split("\n")
-                f_name, u_id_text, link = None, None, None
-                
-                for line in lines:
-                    if line.startswith("📁FOLDER:"):
-                        f_name = line.replace("📁FOLDER:", "").strip()
-                        if f_name.startswith("[") and f_name.endswith("]"): f_name = f_name[1:-1].strip()
-                        if (f_name.startswith("'") and f_name.endswith("'")) or (f_name.startswith('"') and f_name.endswith('"')): f_name = f_name[1:-1].strip()
-                    elif line.startswith("👤USER:"):
-                        u_id_text = line.replace("👤USER:", "").strip()
-                    elif line.startswith("🔗LINK:"):
-                        link = line.replace("🔗LINK:", "").strip()
+            if "FOLDER" not in msg.content:
+                continue
 
-                if f_name and u_id_text and link:
-                    if int(u_id_text) == user_id:
-                        if (keyword.lower() in f_name.lower()) or (keyword.lower() in link.lower()):
-                            results_text.append(
-                                f"📂 **{f_name}**\n"
-                                f" └─ {link}"
-                            )
-                            found_count += 1
-                            if found_count >= 15:
-                                break
-    except:
-        pass
+            parsed = _parse_log_message(msg.content)
+            f_name = parsed.get("FOLDER")
+            u_id_str = parsed.get("USER")
+            link = parsed.get("LINK")
 
-    if found_count == 0:
-        embed.description = f"該当するアーカイブは見つかりませんでした。"
+            if not (f_name and u_id_str and link):
+                continue
+
+            if int(u_id_str) != user_id:
+                continue
+
+            if keyword.lower() in f_name.lower() or keyword.lower() in link.lower():
+                results.append(f"**{f_name}**\n└ {link}")
+                found += 1
+                if found >= 20:      # 結果を多すぎないように制限
+                    break
+
+    except Exception:
+        traceback.print_exc()
+
+    if not results:
+        embed.description = "該当するデータは見つかりませんでした。"
         embed.color = 0x555555
     else:
-        embed.description = f"一致したアイテムが {found_count} 件見つかりました。\n\n" + "\n\n".join(results_text)
+        embed.description = f"{found}件見つかりました。\n\n" + "\n\n".join(results)
 
     return embed
 
 
-async def delete_category_logs(bot, vc_id, user_id, folder_name):
+async def delete_category_logs(bot, vc_id: int, user_id: int, folder_name: str) -> bool:
     storage_vc = bot.get_channel(vc_id)
     if not storage_vc:
         return False
 
-    messages_to_delete = []
-    try:
-        async for msg in storage_vc.history(limit=1000):
-            content = msg.content
-            lines = content.split("\n")
-            
-            if content.startswith("🆕NEW_FOLDER:"):
-                f_name, u_id_text = None, None
-                for line in lines:
-                    if line.startswith("🆕NEW_FOLDER:"):
-                        f_name = line.replace("🆕NEW_FOLDER:", "").strip()
-                    elif line.startswith("👤USER:"):
-                        u_id_text = line.replace("👤USER:", "").strip()
-                
-                if f_name == folder_name and u_id_text and int(u_id_text) == user_id:
-                    messages_to_delete.append(msg)
-                    
-            elif content.startswith("📁FOLDER:"):
-                f_name, u_id_text = None, None
-                for line in lines:
-                    if line.startswith("📁FOLDER:"):
-                        raw_f = line.replace("📁FOLDER:", "").strip()
-                        if raw_f.startswith("[") and raw_f.endswith("]"): raw_f = raw_f[1:-1].strip()
-                        if (raw_f.startswith("'") and raw_f.endswith("'")) or (raw_f.startswith('"') and raw_f.endswith('"')): raw_f = raw_f[1:-1].strip()
-                        f_name = raw_f
-                    elif line.startswith("👤USER:"):
-                        u_id_text = line.replace("👤USER:", "").strip()
-                
-                # 💡 部分一致(in)ではなく、完全一致(==)に修正して誤削除を防止します
-                if u_id_text and int(u_id_text) == user_id and f_name == folder_name:
-                    messages_to_delete.append(msg)
-                    
-        # 💡 抽出した対象メッセージを一括で安全に物理削除
-        if messages_to_delete:
-            for target_msg in messages_to_delete:
-                try:
-                    await target_msg.delete()
-                    await asyncio.sleep(0.2) # APIリミット制限の安全対策
-                except:
-                    continue
-            return True
-                    
-    except Exception as e:
-        print(f"[ERROR] 金庫データの物理削除中にエラーが発生しました: {e}")
-        return False
+    to_delete = []
 
-    return False
+    try:
+        async for msg in storage_vc.history(limit=1200):
+            parsed = _parse_log_message(msg.content)
+
+            f_name = parsed.get("NEW_FOLDER") or parsed.get("FOLDER")
+            u_id_str = parsed.get("USER")
+
+            if f_name == folder_name and u_id_str and int(u_id_str) == user_id:
+                to_delete.append(msg)
+
+        if not to_delete:
+            return False
+
+        # 一括削除（可能な限り）
+        if len(to_delete) == 1:
+            await to_delete[0].delete()
+        else:
+            # 100件まで一括削除可能
+            for i in range(0, len(to_delete), 100):
+                batch = to_delete[i:i+100]
+                await storage_vc.delete_messages(batch)
+                await asyncio.sleep(0.3)  # 安全マージン
+
+        return True
+
+    except Exception as e:
+        print(f"[delete_category_logs] Error: {e}")
+        traceback.print_exc()
+        return False
