@@ -18,6 +18,10 @@ bot = commands.Bot(
 async def on_ready():
     print(f"✅ ログイン成功: {bot.user} ({bot.user.id})")
     print(f"📊 参加サーバー: {len(bot.guilds)} サーバー")
+    
+    # 【修正箇所1】ログイン完了後（サーバー情報が読み込まれた後）に同期を実行する
+    if len(bot.guilds) <= 5:
+        await sync_all_commands()
 
 
 async def load_cogs():
@@ -40,11 +44,11 @@ async def sync_all_commands(guild=None):
             await bot.tree.sync(guild=guild)
             print(f"→ {guild.name} に同期完了")
         else:  # 全サーバー
-            for g in bot.guilds:
-                bot.tree.copy_global_to(guild=g)
-                await bot.tree.sync(guild=g)
-                print(f"→ {g.name} に同期完了")
-                await asyncio.sleep(0.8)
+            # 【修正箇所2】グローバルコマンドの同期に変更（または各サーバーへの適切な同期）
+            # 5サーバー以下なら一応ループでも動きますが、通常は以下の一行だけで十分です
+            await bot.tree.sync() 
+            print("→ グローバル同期が完了しました（反映に最大1時間かかる場合があります）")
+            
         print("✅ コマンド同期完了")
         return True
     except Exception as e:
@@ -55,16 +59,17 @@ async def sync_all_commands(guild=None):
 
 async def main():
     async with bot:
+        # 1. 拡張機能（Cog）をロードする
         await load_cogs()
 
-        # 起動時は5サーバー以下の場合のみ自動同期
-        if bot.guilds and len(bot.guilds) <= 5:
-            await sync_all_commands()
-
+        # 【修正箇所3】ボットのトークンチェックをログイン前に確実に行う
         token = os.getenv("DISCORD_BOT_TOKEN")
         if not token:
             print("❌ DISCORD_BOT_TOKEN が設定されていません")
             return
+            
+        # 2. Discordに接続（ログイン）する
+        # ※ボットが起動した後に「on_ready」の中で自動的にコマンド同期が走ります
         await bot.start(token)
 
 
