@@ -152,6 +152,7 @@ class BookmarkCog(commands.Cog):
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    # 💡 【完全修正】bot.pyから中継された通信を受け取る、正しいCog型イベントリスナー
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         global post_id, storage_vc_id
@@ -168,12 +169,11 @@ class BookmarkCog(commands.Cog):
         if not storage_vc:
             return
 
-        # 💡 【URL判定に限定】メッセージ内容からURL（http:// または https://）だけを確実に抽出
+        # URL判定
         url_match = re.search(r"https?://[^\s]+", message.content)
         if not url_match:
-            return # URLが含まれていなければここで完全に無視
+            return
 
-        # 抽出した純粋なURLリンクを保存対象リストに入れる
         url_list = [url_match.group(0)]
         memo_text = message.content.strip()
 
@@ -219,7 +219,6 @@ class BookmarkCog(commands.Cog):
             )
             return
 
-        # 選択メニュー（View）を返信
         view = CategorySelectView(
             reversed(folders), url_list, post_id, storage_vc_id, memo_text
         )
