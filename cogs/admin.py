@@ -60,13 +60,14 @@ class AdminCog(commands.Cog):
                     name="🤫・データ金庫", category=cat, overwrites=overwrites
                 )
 
-            from cogs.bookmark import load_channel_ids, sync_all_cached_folders
+            # 💡 【完全修正】cogs.bookmark からではなく、新設した cogs.commands から安全にIDを読み直します
+            from cogs.commands import load_channel_ids, sync_all_cached_folders
             load_channel_ids(guild)
             await sync_all_cached_folders(self.bot)
 
             embed = discord.Embed(
                 title="✨ システムセットアップ完了",
-                description="趣味の保管庫に必要なチャンネルと秘密の金庫的生成・同期が正常に完了しました。",
+                description="趣味の保管庫に必要なチャンネルと秘密の金庫の生成・同期が正常に完了しました。",
                 color=0x2f3136
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
