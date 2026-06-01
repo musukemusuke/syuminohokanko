@@ -25,6 +25,18 @@ def load_channel_ids(guild: discord.Guild):
         return True
     return False
 
+# 💡 過去の書き込みバグ（括弧やクォーテーション）を綺麗に消し去るお掃除関数
+def clean_folder_name(name: str) -> str:
+    if not name:
+        return ""
+    # ['動画'] や ["動画"] の形式を、純粋な 動画 という文字列に戻す
+    cleaned = name.strip()
+    if cleaned.startswith("[") and cleaned.endswith("]"):
+        cleaned = cleaned[1:-1].strip()
+    if (cleaned.startswith("'") and cleaned.endswith("'")) or (cleaned.startswith('"') and cleaned.endswith('"')):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
 class BookmarkCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -95,7 +107,7 @@ class BookmarkCog(commands.Cog):
             load_channel_ids(interaction.guild)
 
         if not storage_vc_id:
-            await interaction.followup.send("❌ セットアップが完了していません。", ephemeral=True)
+            await interaction.followup.send("❌ セットアップが完了していません。", Hong ephemeral=True)
             return
 
         success = await delete_category_logs(self.bot, storage_vc_id, interaction.user.id, name)
@@ -152,7 +164,6 @@ class BookmarkCog(commands.Cog):
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # 💡 【完全解決】bot.pyから通信が遮断されずに届く、正規のメッセージイベント
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         global post_id, storage_vc_id
@@ -169,7 +180,6 @@ class BookmarkCog(commands.Cog):
         if not storage_vc:
             return
 
-        # 💡 URLの抽出（http:// または https://）
         url_match = re.search(r"https?://[^\s]+", message.content)
         if not url_match:
             return
@@ -195,6 +205,8 @@ class BookmarkCog(commands.Cog):
                             u_id_text = line.replace("👤USER:", "").strip()
                             
                     if f_name and u_id_text and int(u_id_text) == user_id:
+                        # 💡 過去の壊れたデータ形式を自動でお掃除して追加
+                        f_name = clean_folder_name(f_name)
                         if f_name not in folders and f_name not in deleted_folders:
                             folders.append(f_name)
 
@@ -207,6 +219,7 @@ class BookmarkCog(commands.Cog):
                             u_id_text = line.replace("👤USER:", "").strip()
                             
                     if f_name and u_id_text and int(u_id_text) == user_id:
+                        f_name = clean_folder_name(f_name)
                         deleted_folders.append(f_name)
         except Exception as e:
             print(f"[ERROR] フォルダ取得エラー: {e}")
@@ -219,7 +232,6 @@ class BookmarkCog(commands.Cog):
             )
             return
 
-        # 💡 【完全復活】ボットにViewを事前登録（永続化対応）させ、メニューを送信
         view = CategorySelectView(
             reversed(folders), url_list, post_id, storage_vc_id, memo_text
         )
@@ -228,8 +240,6 @@ class BookmarkCog(commands.Cog):
             description="🔷 **このコンテンツの保管先フォルダを選択してください**",
             color=0x2f3136
         )
-        
-        # 100%確実にメニューを返信します
         await message.reply(embed=embed_reply, view=view)
 
         async def refresh_task():
