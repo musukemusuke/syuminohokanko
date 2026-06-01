@@ -10,6 +10,7 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
     archive_data = {}
 
     try:
+        # 最新のメッセージから履歴を追う
         async for msg in storage_vc.history(limit=1000):
             content = msg.content
             lines = content.split("\n")
@@ -36,6 +37,7 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
                     f_name, u_id_text, link = None, None, None
                     for line in lines:
                         if line.startswith("📁FOLDER:"):
+                            # 過去のクォーテーションや括弧の残骸（['動画']など）を綺麗にお掃除
                             raw_f = line.replace("📁FOLDER:", "").strip()
                             if raw_f.startswith("[") and raw_f.endswith("]"): raw_f = raw_f[1:-1].strip()
                             if (raw_f.startswith("'") and raw_f.endswith("'")) or (raw_f.startswith('"') and raw_f.endswith('"')): raw_f = raw_f[1:-1].strip()
@@ -61,8 +63,10 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
     if not folders:
         return None
 
+    # 💡 【修正完了】勝手に英語にしていたタイトルを、元の『趣味の保管庫』にしっかりと直しました
     embed = discord.Embed(
-        title=f"⚜️ {display_name} | COLLECTION ARCHIVE",
+        title=f"📚 {display_name} の趣味の保管庫",
+        description="これまでに集めたURLリンクの一覧です。",
         color=0x2f3136
     )
     
@@ -149,7 +153,7 @@ async def delete_category_logs(bot, vc_id, user_id, folder_name):
                     elif line.startswith("👤USER:"):
                         u_id_text = line.replace("👤USER:", "").strip()
                 
-                if f_name == folder_name and u_id_text and int(u_id_text) == user_id:
+                if f_name == folder_name && u_id_text && int(u_id_text) == user_id:
                     await msg.delete()
                     deleted_any = True
                     
