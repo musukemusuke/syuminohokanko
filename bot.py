@@ -18,7 +18,7 @@ class CategorySelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        # 縦に長い処理を無くし、ファイル(data.txt)に直接1行でスマートに追記保存
+        # ファイル(data.txt)に追記保存
         with open("data.txt", "a", encoding="utf-8") as f:
             f.write(f"{interaction.user.id},{self.values},{self.content_url}\n")
         await interaction.followup.send(f"✅ **{self.values}** に保存しました！", ephemeral=True)
@@ -26,7 +26,6 @@ class CategorySelect(discord.ui.Select):
 # --- 2. スラッシュコマンド（仕分けフォルダの追加） ---
 @bot.tree.command(name="category_add", description="仕分けフォルダを追加します")
 async def category_add(interaction: discord.Interaction, name: str):
-    # ユーザーごとのフォルダ作成記録も、ファイルに1行で保存
     with open("folders.txt", "a", encoding="utf-8") as f:
         f.write(f"{interaction.user.id},{name}\n")
     await interaction.response.send_message(f"✅ 📁 **{name}** を作成しました！", ephemeral=True)
@@ -37,7 +36,6 @@ async def archive_view(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     u_id = interaction.user.id
     
-    # フォルダ一覧の読み込み（縦に長いスキャンを廃止）
     user_folders = []
     if os.path.exists("folders.txt"):
         with open("folders.txt", "r", encoding="utf-8") as f:
@@ -53,7 +51,6 @@ async def archive_view(interaction: discord.Interaction):
 
     embed = discord.Embed(title=f"📚 {interaction.user.display_name} のブックマーク", color=discord.Color.blue())
     
-    # データの読み込み
     for folder in user_folders:
         items = []
         if os.path.exists("data.txt"):
@@ -74,7 +71,6 @@ async def archive_view(interaction: discord.Interaction):
 async def on_message(message: discord.Message):
     if message.author.bot or message.channel.id != post_id: return
 
-    # 画像・動画・URLを判定
     url = message.attachments.url if message.attachments else None
     if not url and ("http://" in message.content or "https://" in message.content):
         for w in message.content.split():
@@ -95,7 +91,7 @@ async def on_message(message: discord.Message):
             
         await message.reply("どのフォルダに保存しますか？", view=discord.ui.View().add_item(CategorySelect(user_folders, url)))
 
-# --- 5. 起動＆チャンネルの自動生成 ---
+# --- 5. 起動＆チャンネルの自動生成（爆速化） ---
 @bot.event
 async def on_ready():
     global post_id, archive_id
@@ -107,13 +103,20 @@ async def on_ready():
         ch_post = discord.utils.get(cat.text_channels, name="📥・ブックマーク") or await guild.create_text_channel(name="📥・ブックマーク", category=cat)
         ch_arc = discord.utils.get(cat.text_channels, name="📚・アーカイブ") or await guild.create_text_channel(name="📚・アーカイブ", category=cat)
         post_id, archive_id = ch_post.id, ch_arc.id
+    
+    # ★ ログイン完了後、チャンネル作成が全て終わってから裏でタイマーを開始させる（バグ修正）
+    bot.loop.create_task(shutdown_timer())
+
+async def shutdown_timer():
+    await asyncio.sleep(9900) # 2時間45分待つ
+    print("安全に自動終了します。")
+    await bot.close()
 
 async def main():
     async with bot:
-        # GitHub Actionsの6時間制限（タイムアウト）にかかる前に、2時間45分（9900秒）で安全に自動交代する内製タイマー
-        bot.loop.create_task(asyncio.sleep(9900))
+        # 先にログインさせてボットの目を覚まさせます
         await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 if __name__ == "__main__":
     try: asyncio.run(main())
-    except: print("安全に自動終了します。")
+    except: print("終了しました。")
