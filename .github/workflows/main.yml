@@ -1,0 +1,37 @@
+name: Run Discord Bot
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    # 3時間ごとに自動リスタートして6時間制限を回避
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+    # ★他人の古いコード（checkout）を使わず、生のgitコマンドで最新環境に直接コードを取り込む
+    - name: Fetch repository code safely
+      run: |
+        git clone --depth=1 https://github.com{{ github.repository }}.git .
+        git checkout ${{ github.sha }}
+
+    # ★GitHubの古い部品を使わず、Ubuntuに標準搭載されている最新のPython3とpipを直接使う
+    - name: Set up dependencies natively
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-pip python3-setuptools
+        pip3 install discord.py --break-system-packages
+
+    # 6時間制限に引っかかる前に安全に交代させる命令
+    - name: Start Bot with Timeout
+      env:
+        DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      run: |
+        timeout 9900 python3 bot.py || true
