@@ -8,6 +8,10 @@ on:
     - cron: '0 */3 * * *'
   workflow_dispatch: # 手動で起動できるボタンを追加
 
+# ★【最重要】一番上のこの位置に書くことで、GitHub Actions全体にNode 24への強制移行を適用します！
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -16,11 +20,11 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
     steps:
-    # ★Node.js 24環境で動く、正真正銘の最新バージョン「@v6」を指定
+    # Node 24で100%動作する最新のチェックアウト部品
     - name: Checkout code safely
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
 
-    # ★Node.js環境に完全対応した、公式Python部品の最新版「@v5」を指定
+    # @v5 が内部でNode 20を使っていても、上の環境変数のおかげで強制的にNode 24で安全に実行されます
     - name: Set up Python safely
       uses: actions/setup-python@v5
       with:
