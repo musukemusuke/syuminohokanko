@@ -10,7 +10,7 @@ from views import CategorySelectView
 # チャンネル管理用のグローバルID
 post_id, archive_id, storage_vc_id = None, None, None
 
-# フォルダ名をメモリにキャッシュする仕組み
+# フォルダ名をメモリにキャッシュして動作を爆速にする仕組み
 cached_folders = {} # {user_id: [folder_names]}
 
 def load_channel_ids(guild: discord.Guild):
@@ -55,7 +55,7 @@ class BookmarkCog(commands.Cog):
                 print(f"[{guild.name}] アーカイブ画面を自動更新しました。")
                 break
 
-    # キャッシュ同期用関数
+    # 💡 【完全修正】ログの行数に関わらず、安全に1行ずつ精査してフォルダを検出するロジック
     async def sync_user_folders(self, user_id):
         global storage_vc_id
         storage_vc = self.bot.get_channel(storage_vc_id)
@@ -67,30 +67,33 @@ class BookmarkCog(commands.Cog):
 
         try:
             async for msg in storage_vc.history(limit=1000):
-                if msg.content.startswith("🆕NEW_FOLDER:"):
-                    lines = msg.content.split("\n")
+                content = msg.content
+                lines = content.split("\n")
+                
+                if content.startswith("🆕NEW_FOLDER:"):
                     f_name, u_id_text = None, None
                     for line in lines:
                         if line.startswith("🆕NEW_FOLDER:"):
                             f_name = line.replace("🆕NEW_FOLDER:", "").strip()
                         elif line.startswith("👤USER:"):
                             u_id_text = line.replace("👤USER:", "").strip()
+                            
                     if f_name and u_id_text and int(u_id_text) == user_id:
                         if f_name not in folders and f_name not in deleted_folders:
                             folders.append(f_name)
 
-                elif msg.content.startswith("🗑️DELETE_FOLDER:"):
-                    lines = msg.content.split("\n")
+                elif content.startswith("🗑️DELETE_FOLDER:"):
                     f_name, u_id_text = None, None
                     for line in lines:
                         if line.startswith("🗑️DELETE_FOLDER:"):
                             f_name = line.replace("🗑️DELETE_FOLDER:", "").strip()
                         elif line.startswith("👤USER:"):
                             u_id_text = line.replace("👤USER:", "").strip()
+                            
                     if f_name and u_id_text and int(u_id_text) == user_id:
                         deleted_folders.append(f_name)
-        except:
-            pass
+        except Exception as e:
+            print(f"[ERROR] フォルダ同期中にエラーが発生しました: {e}")
 
         active_folders = [f for f in folders if f not in deleted_folders]
         cached_folders[user_id] = active_folders
@@ -121,6 +124,7 @@ class BookmarkCog(commands.Cog):
             f"🆕NEW_FOLDER:{name}\n" f"👤USER:{interaction.user.id}"
         )
         
+        # 追加時にキャッシュを強制同期
         await self.sync_user_folders(interaction.user.id)
         
         embed = discord.Embed(
@@ -190,7 +194,6 @@ class BookmarkCog(commands.Cog):
         if not storage_vc_id and interaction.guild:
             load_channel_ids(interaction.guild)
 
-        # 💡 【タイポ修正】Hong を削除し、正しい記述に直しました
         if not storage_vc_id:
             await interaction.followup.send("❌ セットアップが完了していません。", ephemeral=True)
             return
@@ -231,6 +234,7 @@ class BookmarkCog(commands.Cog):
 
         user_id = message.author.id
         
+        # 💡 キャッシュ（メモリ）から安全に取り出し
         if user_id not in cached_folders or not cached_folders[user_id]:
             folders = await self.sync_user_folders(user_id)
         else:
