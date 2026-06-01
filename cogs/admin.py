@@ -60,8 +60,9 @@ class AdminCog(commands.Cog):
                     name="🤫・データ金庫", category=cat, overwrites=overwrites
                 )
 
-            from cogs.bookmark import load_channel_ids
+            from cogs.bookmark import load_channel_ids, sync_all_cached_folders
             load_channel_ids(guild)
+            await sync_all_cached_folders(self.bot)
 
             embed = discord.Embed(
                 title="✨ システムセットアップ完了",
