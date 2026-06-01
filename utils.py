@@ -1,31 +1,27 @@
 import discord
 import traceback
 import asyncio
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 
-# ====================== 共通ヘルパー ======================
-def _parse_log_message(content: str) -> Dict[str, str]:
-    """VCのログメッセージをパースする共通関数"""
+# ====================== 共通パーサー ======================
+def _parse_log(content: str) -> Dict[str, str]:
+    """VCログを安全にパースする共通関数"""
     data = {}
-    lines = content.split("\n")
-    
-    for line in lines:
+    for line in content.split("\n"):
         line = line.strip()
-        if not line or ":" not in line:
+        if ":" not in line:
             continue
-            
         key, value = line.split(":", 1)
         key = key.strip()
         value = value.strip()
-        
+
         # 余計な引用符・括弧を除去
-        for char in ["'", '"', "[", "]"]:
-            if value.startswith(char) and value.endswith(char):
+        for c in ['"', "'", "[", "]"]:
+            if value.startswith(c) and value.endswith(c):
                 value = value[1:-1].strip()
         
         data[key] = value
-    
     return data
 
 
@@ -36,18 +32,18 @@ async def build_archive_embed(bot, vc_id: int, user_id: int, display_name: str):
         return None
 
     folders: List[str] = []
-    folder_representative: Dict[str, str] = {}      # フォルダ作成時の代表URL
-    archive_data: Dict[str, List[str]] = {}         # {folder: [urls]}
+    folder_rep: Dict[str, str] = {}      # フォルダ作成時の代表URL
+    archive_data: Dict[str, List[str]] = {}  # {folder: [urls...]}
 
     try:
-        async for msg in storage_vc.history(limit=1200):
+        async for msg in storage_vc.history(limit=1500):
             content = msg.content.strip()
             if not content:
                 continue
+            parsed = _parse_log(content)
 
-            parsed = _parse_log_message(content)
-
-            if "NEW_FOLDER" in content:   # 🆕NEW_FOLDER:
+            # 新規フォルダ作成
+            if "NEW_FOLDER" in content:
                 f_name = parsed.get("NEW_FOLDER")
                 u_id = int(parsed.get("USER", 0))
                 link = parsed.get("LINK")
@@ -55,10 +51,11 @@ async def build_archive_embed(bot, vc_id: int, user_id: int, display_name: str):
                 if f_name and u_id == user_id and f_name not in folders:
                     folders.append(f_name)
                     if link:
-                        folder_representative[f_name] = link
+                        folder_rep[f_name] = link
                     archive_data.setdefault(f_name, [])
 
-            elif "FOLDER" in content:     # 📁FOLDER:
+            # 実際の保存データ
+            elif "FOLDER" in content:
                 f_name = parsed.get("FOLDER")
                 u_id = int(parsed.get("USER", 0))
                 link = parsed.get("LINK")
@@ -68,7 +65,7 @@ async def build_archive_embed(bot, vc_id: int, user_id: int, display_name: str):
                     if link not in archive_data[f_name]:
                         archive_data[f_name].append(link)
 
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return None
 
@@ -77,28 +74,24 @@ async def build_archive_embed(bot, vc_id: int, user_id: int, display_name: str):
 
     embed = discord.Embed(
         title=f"📚 {display_name} の趣味の保管庫",
-        description="保存したURL一覧です（最新順）",
+        description="保存したリンク一覧（新しいフォルダ順）",
         color=0x2f3136
     )
 
-    # 新しいフォルダが上に来るように
     for folder in reversed(folders):
         urls = archive_data.get(folder, [])
         lines = []
 
-        # 代表URL（フォルダ作成時のURL）
-        if folder in folder_representative:
-            lines.append(f"⭐ **代表**: {folder_representative[folder]}")
+        if folder in folder_rep:
+            lines.append(f"⭐ **代表リンク:** {folder_rep[folder]}")
             if urls:
                 lines.append("")
 
-        # 保存されたURL一覧
-        for url in urls:
-            lines.append(url)
+        lines.extend(urls)
 
-        value = "\n".join(lines) if lines else "（空のフォルダ）"
+        value = "\n".join(lines) if lines else "（まだ何も保存されていません）"
         
-        # Embedのvalueは1024文字制限に注意
+        # Embed制限対策
         if len(value) > 1000:
             value = value[:997] + "..."
 
@@ -109,45 +102,42 @@ async def build_archive_embed(bot, vc_id: int, user_id: int, display_name: str):
 
 async def search_archive_data(bot, vc_id: int, user_id: int, keyword: str):
     storage_vc = bot.get_channel(vc_id)
-    embed = discord.Embed(title=f"🔍 「{keyword}」の検索結果", color=0xd4af37)
+    embed = discord.Embed(title=f'🔍 「{keyword}」の検索結果', color=0xd4af37)
 
     if not storage_vc:
         embed.description = "❌ データ金庫にアクセスできません。"
         return embed
 
     results = []
-    found = 0
+    count = 0
 
     try:
-        async for msg in storage_vc.history(limit=1000):
+        async for msg in storage_vc.history(limit=1200):
             if "FOLDER" not in msg.content:
                 continue
 
-            parsed = _parse_log_message(msg.content)
+            parsed = _parse_log(msg.content)
             f_name = parsed.get("FOLDER")
-            u_id_str = parsed.get("USER")
+            u_id = int(parsed.get("USER", 0))
             link = parsed.get("LINK")
 
-            if not (f_name and u_id_str and link):
-                continue
-
-            if int(u_id_str) != user_id:
+            if u_id != user_id or not f_name or not link:
                 continue
 
             if keyword.lower() in f_name.lower() or keyword.lower() in link.lower():
                 results.append(f"**{f_name}**\n└ {link}")
-                found += 1
-                if found >= 20:      # 結果を多すぎないように制限
+                count += 1
+                if count >= 20:
                     break
 
     except Exception:
         traceback.print_exc()
 
     if not results:
-        embed.description = "該当するデータは見つかりませんでした。"
+        embed.description = "該当するデータが見つかりませんでした。"
         embed.color = 0x555555
     else:
-        embed.description = f"{found}件見つかりました。\n\n" + "\n\n".join(results)
+        embed.description = f"{count}件見つかりました。\n\n" + "\n\n".join(results)
 
     return embed
 
@@ -160,27 +150,25 @@ async def delete_category_logs(bot, vc_id: int, user_id: int, folder_name: str) 
     to_delete = []
 
     try:
-        async for msg in storage_vc.history(limit=1200):
-            parsed = _parse_log_message(msg.content)
-
+        async for msg in storage_vc.history(limit=1500):
+            parsed = _parse_log(msg.content)
             f_name = parsed.get("NEW_FOLDER") or parsed.get("FOLDER")
-            u_id_str = parsed.get("USER")
+            u_id = int(parsed.get("USER", 0))
 
-            if f_name == folder_name and u_id_str and int(u_id_str) == user_id:
+            if f_name == folder_name and u_id == user_id:
                 to_delete.append(msg)
 
         if not to_delete:
             return False
 
-        # 一括削除（可能な限り）
-        if len(to_delete) == 1:
-            await to_delete[0].delete()
-        else:
-            # 100件まで一括削除可能
-            for i in range(0, len(to_delete), 100):
-                batch = to_delete[i:i+100]
+        # 一括削除（効率的）
+        for i in range(0, len(to_delete), 100):
+            batch = to_delete[i:i + 100]
+            if len(batch) == 1:
+                await batch[0].delete()
+            else:
                 await storage_vc.delete_messages(batch)
-                await asyncio.sleep(0.3)  # 安全マージン
+            await asyncio.sleep(0.3)
 
         return True
 
