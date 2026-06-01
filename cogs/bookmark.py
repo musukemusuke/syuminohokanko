@@ -152,6 +152,7 @@ class BookmarkCog(commands.Cog):
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    # 🛠️ 【最重要修正】第一引数に「self」をしっかりと追加しました
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         global post_id, storage_vc_id
@@ -161,7 +162,7 @@ class BookmarkCog(commands.Cog):
         if message.guild and (not post_id or not storage_vc_id):
             load_channel_ids(message.guild)
 
-        # 1. チャンネルが「📥・ブックマーク」でなければ即終了
+        # チャンネルのID一致判定
         if message.channel.id != post_id:
             return
 
@@ -169,21 +170,19 @@ class BookmarkCog(commands.Cog):
         if not storage_vc:
             return
 
-        # 💡 【完全万能化ロジック】
-        # 投稿された生コンテンツ（画像URL、生URL、ただの文章）を、条件で弾かずにそのまま格納します
         url_list = []
         memo_text = message.content.strip()
 
+        # 画像やファイルが貼られている場合の処理
         if message.attachments:
-            # 画像やファイルが1枚でも複数枚でも、その直接URLを取得
             for attachment in message.attachments:
                 url_list.append(attachment.url)
         else:
-            # 添付ファイルがなければ、本文（通常のURL、URLを含む文章、または普通のメモテキスト）をそのまま保存対象にする
+            # 添付ファイルがない場合、貼られた文章（URLや文字）をそのまま保管対象にする
             if memo_text:
                 url_list.append(memo_text)
 
-        # 完全に中身が空の場合は処理をスキップ
+        # 完全に空の場合はスキップ
         if not url_list:
             return
 
@@ -230,7 +229,6 @@ class BookmarkCog(commands.Cog):
             )
             return
 
-        # 抽出した生のURL・テキストリストをそのまま画面（View）へ渡す
         view = CategorySelectView(
             reversed(folders), url_list, post_id, storage_vc_id, memo_text
         )
