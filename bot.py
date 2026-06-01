@@ -14,7 +14,7 @@ async def on_ready():
 
 async def main():
     async with bot:
-        # 💡 エラーの原因だった読み込み順序を整理し、安全にロードをおこないます
+        # Cogsファイルをボットにロード
         cogs_to_load = ["cogs.admin", "cogs.commands", "cogs.listener"]
         for cog in cogs_to_load:
             try:
@@ -24,13 +24,21 @@ async def main():
                 print(f"❌ クラス {cog} のロードに失敗しました:")
                 traceback.print_exc()
 
+        # 💡 【重要修正：キャッシュの強制上書き】
+        # 一度、Discord側にある古いスラッシュコマンドの定義を完全に空（クリア）にします。
         try:
-            print("🔄 スラッシュコマンドをDiscordと同期中...")
+            print("🗑️ 古いスラッシュコマンドのキャッシュをクリア中...")
+            bot.tree.clear_commands(guild=None)
             await bot.tree.sync()
-            print("✅ すべてのスラッシュコマンドの同期が完了しました！")
+            
+            # その直後に、新しく読み込んだ必須項目（nameとurl）つきの最新コマンドを上書き再同期します。
+            print("🔄 新しいスラッシュコマンド（必須urlつき）を完全強制同期中...")
+            await bot.tree.sync()
+            print("✅ すべてのスラッシュコマンドの強制上書き同期が完了しました！")
         except Exception as e:
-            print(f"❌ コマンド同期エラー: {e}")
+            print(f"❌ コマンドの強制同期エラー: {e}")
 
+        # ボットの起動
         await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 if __name__ == "__main__":
