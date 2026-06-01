@@ -7,30 +7,30 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
         return None
 
     folders = []
+    folder_urls = {} # {folder_name: folder_top_url}
     archive_data = {}
 
     try:
-        # 最新のメッセージから履歴を追う
         async for msg in storage_vc.history(limit=1000):
             content = msg.content
             lines = content.split("\n")
             
-            if content.startswith("🗑️DELETE_FOLDER:"):
-                # もし残っていれば、削除ログはスキップまたは後続で判定するためにここでは構造を維持
-                continue
-
-            elif content.startswith("🆕NEW_FOLDER:"):
+            if content.startswith("🆕NEW_FOLDER:"):
                 try:
-                    f_name, u_id_text = None, None
+                    f_name, u_id_text, f_url = None, None, None
                     for line in lines:
                         if line.startswith("🆕NEW_FOLDER:"):
                             f_name = line.replace("🆕NEW_FOLDER:", "").strip()
                         elif line.startswith("👤USER:"):
                             u_id_text = line.replace("👤USER:", "").strip()
+                        elif line.startswith("🔗LINK:"):
+                            f_url = line.replace("🔗LINK:", "").strip()
                     
                     if f_name and u_id_text:
                         if int(u_id_text) == user_id and f_name not in folders:
                             folders.append(f_name)
+                            if f_url:
+                                folder_urls[f_name] = f_url
                             if f_name not in archive_data:
                                 archive_data[f_name] = []
                 except:
@@ -41,7 +41,6 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
                     f_name, u_id_text, link = None, None, None
                     for line in lines:
                         if line.startswith("📁FOLDER:"):
-                            # 過去のクォーテーションや括弧の残骸（['動画']など）を綺麗にお掃除
                             raw_f = line.replace("📁FOLDER:", "").strip()
                             if raw_f.startswith("[") and raw_f.endswith("]"): raw_f = raw_f[1:-1].strip()
                             if (raw_f.startswith("'") and raw_f.endswith("'")) or (raw_f.startswith('"') and raw_f.endswith('"')): raw_f = raw_f[1:-1].strip()
@@ -67,7 +66,6 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
     if not folders:
         return None
 
-    # タイトルを元の『趣味の保管庫』に同期
     embed = discord.Embed(
         title=f"📚 {display_name} の趣味の保管庫",
         description="これまでに集めたURLリンクの一覧です。",
@@ -77,6 +75,12 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
     for folder in reversed(folders):
         items = archive_data.get(folder, [])
         item_links = []
+        
+        # 💡 もしフォルダ自体に代表URLが登録されていれば、リストの先頭にわかりやすく配置
+        if folder in folder_urls:
+            item_links.append(f"⭐ **代表リンク:** {folder_urls[folder]}")
+            if items:
+                item_links.append("──────") # 区切り線
         
         for link in items:
             item_links.append(f"{link}")
@@ -157,7 +161,6 @@ async def delete_category_logs(bot, vc_id, user_id, folder_name):
                     elif line.startswith("👤USER:"):
                         u_id_text = line.replace("👤USER:", "").strip()
                 
-                # 💡 【完全修正】&& を Python 正規の and に修正しました
                 if f_name == folder_name and u_id_text and int(u_id_text) == user_id:
                     await msg.delete()
                     deleted_any = True
