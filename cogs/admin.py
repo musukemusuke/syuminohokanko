@@ -24,7 +24,7 @@ class AdminCog(commands.Cog):
 
             post_topic = (
                 "まずは `/category_add` でフォルダを作ってください。\n"
-                "ここにテキスト・URL・画像などを投稿すると自動で仕分けが行われます。"
+                "ここにURLを投稿すると自動で仕分けが行われます。"
             )
             ch_post = discord.utils.get(
                 cat.text_channels, name="📥・ブックマーク"
@@ -60,7 +60,6 @@ class AdminCog(commands.Cog):
                     name="🤫・データ金庫", category=cat, overwrites=overwrites
                 )
 
-            # 別ファイルから同期処理を叩く
             from cogs.bookmark import load_channel_ids
             load_channel_ids(guild)
 
