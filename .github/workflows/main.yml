@@ -4,9 +4,9 @@ on:
   push:
     branches: [ main ]
   schedule:
-    # 3時間ごとに自動リスタートして6時間制限を回避
+    # 3時間ごとに自動起動してバトンを繋ぐ（6時間制限の対策）
     - cron: '0 */3 * * *'
-  workflow_dispatch:
+  workflow_dispatch: # 手動で起動できるボタンを追加
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,22 +16,24 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
     steps:
-    # ★他人の古いコード（checkout）を使わず、生のgitコマンドで最新環境に直接コードを取り込む
-    - name: Fetch repository code safely
-      run: |
-        git clone --depth=1 https://github.com{{ github.repository }}.git .
-        git checkout ${{ github.sha }}
+    # ★Nodeの最新環境に完全対応した、バグのない公式部品の最新版に固定
+    - name: Checkout code safely
+      uses: actions/checkout@v4.2.2
 
-    # ★GitHubの古い部品を使わず、Ubuntuに標準搭載されている最新のPython3とpipを直接使う
-    - name: Set up dependencies natively
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y python3-pip python3-setuptools
-        pip3 install discord.py --break-system-packages
+    # ★Nodeの最新環境に完全対応した、公式Python部品の最新版に固定
+    - name: Set up Python safely
+      uses: actions/setup-python@v5.4.0
+      with:
+        python-version: '3.11'
 
-    # 6時間制限に引っかかる前に安全に交代させる命令
+    # ボットに必要な部品のインストール
+    - name: Install dependencies
+      run: |
+        pip install discord.py
+
+    # 6時間制限にかかる前に、2時間45分で安全に自己終了させる命令
     - name: Start Bot with Timeout
       env:
         DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
       run: |
-        timeout 9900 python3 bot.py || true
+        timeout 9900 python bot.py || true
