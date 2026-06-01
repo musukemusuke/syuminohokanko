@@ -4,7 +4,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-# 完全に不要になった restore のインポート行を完全に削除しました
 from utils import build_archive_embed
 from views import ArchiveViewButton, CategorySelectView
 
@@ -21,7 +20,6 @@ async def my_embed_factory(user_id, display_name):
     )
 
 
-# 仕分け完了時にアーカイブ画面を自動リフレッシュする処理
 async def update_archive_channel_embed(guild, user_id, display_name):
     ch_archive = bot.get_channel(archive_id)
     if not ch_archive:
@@ -47,11 +45,11 @@ async def setup_channels(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
 
-    cat = discord.utils.get(guild.categories, name="📁 ブックマーク") or (
-        await guild.create_category(name="📁 ブックマーク")
+    cat_name = "📁 ブックマーク"
+    cat = discord.utils.get(guild.categories, name=cat_name) or (
+        await guild.create_category(name=cat_name)
     )
 
-    # トピック（説明文）付きでテキストチャンネルを生成
     ch_post = discord.utils.get(
         cat.text_channels, name="📥・ブックマーク"
     ) or (
@@ -76,7 +74,6 @@ async def setup_channels(interaction: discord.Interaction):
 
     ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
 
-    # 全人類・オーナーから完全非表示の金庫VCを生成
     if not ch_vc:
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(
@@ -92,7 +89,6 @@ async def setup_channels(interaction: discord.Interaction):
 
     post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
 
-    # アーカイブ部屋に「本棚ボタン」だけをスマートに設置
     await ch_arc.send(
         "ボタンを押すと、あなたが保存したデータ一覧を表示します。",
         view=ArchiveViewButton(my_embed_factory),
@@ -110,7 +106,7 @@ async def setup_channels(interaction: discord.Interaction):
 async def category_add(interaction: discord.Interaction, name: str):
     storage_vc = bot.get_channel(storage_vc_id)
     await storage_vc.send(
-        f"🆕NEW_FOLDER:{name}\n👤USER:{interaction.user.id}"
+        f"🆕NEW_FOLDER:{name}\n" f"👤USER:{interaction.user.id}"
     )
     await interaction.response.send_message(
         f"✅ フォルダ「📁 **{name}**」を新規作成しました！", ephemeral=True
@@ -149,14 +145,15 @@ async def on_message(message: discord.Message):
         async for msg in storage_vc.history(limit=1000):
             if msg.content.startswith("🆕NEW_FOLDER:"):
                 try:
-                    f_name = (
-                        msg.content.split("🆕NEW_FOLDER:")
-                        .split("\n👤USER:")
-                        .strip()
-                    )
-                    u_id = int(msg.content.split("👤USER:").strip())
-                    if u_id == user_id and f_name not in folders:
-                        folders.append(f_name)
+                    # 配列指定のバグを完全に修正し、安全に読み込み
+                    lines = msg.content.split("\n")
+                    u_id_text = lines[1].replace("👤USER:", "").strip()
+                    if int(u_id_text) == user_id:
+                        f_name = (
+                            lines[0].replace("🆕NEW_FOLDER:", "").strip()
+                        )
+                        if f_name not in folders:
+                            folders.append(f_name)
                 except:
                     continue
 
