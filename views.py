@@ -19,14 +19,15 @@ class CategorySelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        # 即座にレスポンスを確保してタイムアウトを防止
         await interaction.response.defer(ephemeral=True)
         try:
             storage_vc = interaction.client.get_channel(self.vc_id)
             if not storage_vc: return
 
             selected_folder = self.values if isinstance(self.values, list) else self.values
-            timestamp = int(interaction.created_at.timestamp())
 
+            # TIMEやMEMOを完全に除外し、3項目のみを金庫に送信します
             for link in self.original_urls:
                 await storage_vc.send(
                     f"📁FOLDER:{selected_folder}\n"
@@ -39,8 +40,6 @@ class CategorySelect(discord.ui.Select):
                 color=0xd4af37
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
-            
-            # エフェメラルなのでメッセージの自動削除は不要（自動で消せるため）
         except Exception as e:
             traceback.print_exc()
 
