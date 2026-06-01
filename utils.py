@@ -8,27 +8,13 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
 
     folders = []
     archive_data = {}
-    deleted_folders = []
 
     try:
         async for msg in storage_vc.history(limit=1000):
             content = msg.content
             lines = content.split("\n")
             
-            if content.startswith("🗑️DELETE_FOLDER:"):
-                try:
-                    f_name, u_id_text = None, None
-                    for line in lines:
-                        if line.startswith("🗑️DELETE_FOLDER:"):
-                            f_name = line.replace("🗑️DELETE_FOLDER:", "").strip()
-                        elif line.startswith("👤USER:"):
-                            u_id_text = line.replace("👤USER:", "").strip()
-                    if f_name and u_id_text and int(u_id_text) == user_id:
-                        deleted_folders.append(f_name)
-                except:
-                    continue
-
-            elif content.startswith("🆕NEW_FOLDER:"):
+            if content.startswith("🆕NEW_FOLDER:"):
                 try:
                     f_name, u_id_text = None, None
                     for line in lines:
@@ -39,16 +25,15 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
                     
                     if f_name and u_id_text:
                         if int(u_id_text) == user_id and f_name not in folders:
-                            if f_name not in deleted_folders:
-                                folders.append(f_name)
-                                if f_name not in archive_data:
-                                    archive_data[f_name] = []
+                            folders.append(f_name)
+                            if f_name not in archive_data:
+                                archive_data[f_name] = []
                 except:
                     continue
                     
             elif content.startswith("📁FOLDER:"):
                 try:
-                    f_name, u_id_text, link, memo, timestamp = None, None, None, "", ""
+                    f_name, u_id_text, link = None, None, None
                     for line in lines:
                         if line.startswith("📁FOLDER:"):
                             f_name = line.replace("📁FOLDER:", "").strip()
@@ -56,18 +41,14 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
                             u_id_text = line.replace("👤USER:", "").strip()
                         elif line.startswith("🔗LINK:"):
                             link = line.replace("🔗LINK:", "").strip()
-                        elif line.startswith("📝MEMO:"):
-                            memo = line.replace("📝MEMO:", "").strip()
-                        elif line.startswith("⏰TIME:"):
-                            timestamp = line.replace("⏰TIME:", "").strip()
                             
+                    # 💡 MEMOやTIMEの有無を気にせず、リンクだけを純粋に取得して格納
                     if f_name and u_id_text and link:
-                        if int(u_id_text) == user_id and f_name not in deleted_folders:
+                        if int(u_id_text) == user_id:
                             if f_name not in archive_data:
-                                    archive_data[f_name] = []
-                            data_tuple = (link, memo, timestamp)
-                            if data_tuple not in archive_data[f_name]:
-                                archive_data[f_name].append(data_tuple)
+                                archive_data[f_name] = []
+                            if link not in archive_data[f_name]:
+                                archive_data[f_name].append(link)
                 except:
                     continue
 
@@ -75,7 +56,7 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
         traceback.print_exc()
         return None
 
-    folders = [f for f in folders if f not in deleted_folders]
+    folders = [f for f in folders if f not in deleted_folders] if 'deleted_folders' in locals() else folders
     if not folders:
         return None
 
@@ -88,8 +69,7 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
         items = archive_data.get(folder, [])
         item_links = []
         
-        for item in items:
-            link, memo, timestamp = item
+        for link in items:
             item_links.append(f"{link}")
             
         item_list = "\n".join(item_links) if item_links else "*（空のフォルダです）*"
@@ -111,26 +91,13 @@ async def search_archive_data(bot, vc_id, user_id, keyword):
 
     found_count = 0
     results_text = []
-    deleted_folders = []
 
     try:
-        async for msg in storage_vc.history(limit=1000):
-            if msg.content.startswith("🗑️DELETE_FOLDER:"):
-                lines = msg.content.split("\n")
-                f_name, u_id_text = None, None
-                for line in lines:
-                    if line.startswith("🗑️DELETE_FOLDER:"):
-                        f_name = line.replace("🗑️DELETE_FOLDER:", "").strip()
-                    elif line.startswith("👤USER:"):
-                        u_id_text = line.replace("👤USER:", "").strip()
-                if f_name and u_id_text and int(u_id_text) == user_id:
-                    deleted_folders.append(f_name)
-
         async for msg in storage_vc.history(limit=1000):
             content = msg.content
             if content.startswith("📁FOLDER:"):
                 lines = content.split("\n")
-                f_name, u_id_text, link, memo, timestamp = None, None, None, "", ""
+                f_name, u_id_text, link = None, None, None
                 
                 for line in lines:
                     if line.startswith("📁FOLDER:"):
@@ -139,14 +106,10 @@ async def search_archive_data(bot, vc_id, user_id, keyword):
                         u_id_text = line.replace("👤USER:", "").strip()
                     elif line.startswith("🔗LINK:"):
                         link = line.replace("🔗LINK:", "").strip()
-                    elif line.startswith("📝MEMO:"):
-                        memo = line.replace("📝MEMO:", "").strip()
-                    elif line.startswith("⏰TIME:"):
-                        timestamp = line.replace("⏰TIME:", "").strip()
 
-                if f_name and u_id_text and link and (f_name not in deleted_folders):
+                if f_name and u_id_text and link:
                     if int(u_id_text) == user_id:
-                        if (keyword.lower() in f_name.lower()) or (keyword.lower() in link.lower()) or (keyword.lower() in memo.lower()):
+                        if (keyword.lower() in f_name.lower()) or (keyword.lower() in link.lower()):
                             results_text.append(
                                 f"📂 **{f_name}**\n"
                                 f" └─ {link}"
@@ -171,21 +134,38 @@ async def delete_category_logs(bot, vc_id, user_id, folder_name):
     if not storage_vc:
         return False
 
-    exist = False
-    async for msg in storage_vc.history(limit=1000):
-        if msg.content.startswith("🆕NEW_FOLDER:"):
-            lines = msg.content.split("\n")
-            f_name, u_id_text = None, None
-            for line in lines:
-                if line.startswith("🆕NEW_FOLDER:"):
-                    f_name = line.replace("🆕NEW_FOLDER:", "").strip()
-                elif line.startswith("👤USER:"):
-                    u_id_text = line.replace("👤USER:", "").strip()
-            if f_name == folder_name and int(u_id_text) == user_id:
-                exist = True
-                break
+    deleted_any = False
+    try:
+        async for msg in storage_vc.history(limit=1000):
+            content = msg.content
+            lines = content.split("\n")
+            
+            if content.startswith("🆕NEW_FOLDER:"):
+                f_name, u_id_text = None, None
+                for line in lines:
+                    if line.startswith("🆕NEW_FOLDER:"):
+                        f_name = line.replace("🆕NEW_FOLDER:", "").strip()
+                    elif line.startswith("👤USER:"):
+                        u_id_text = line.replace("👤USER:", "").strip()
+                
+                if f_name == folder_name and u_id_text and int(u_id_text) == user_id:
+                    await msg.delete()
+                    deleted_any = True
+                    
+            elif content.startswith("📁FOLDER:"):
+                f_name, u_id_text = None, None
+                for line in lines:
+                    if line.startswith("📁FOLDER:"):
+                        f_name = line.replace("📁FOLDER:", "").strip()
+                    elif line.startswith("👤USER:"):
+                        u_id_text = line.replace("👤USER:", "").strip()
+                
+                if u_id_text and int(u_id_text) == user_id and (folder_name in f_name):
+                    await msg.delete()
+                    deleted_any = True
+                    
+    except Exception as e:
+        print(f"[ERROR] 金庫データの物理削除中にエラーが発生しました: {e}")
+        return False
 
-    if exist:
-        await storage_vc.send(f"🗑️DELETE_FOLDER:{folder_name}\n👤USER:{user_id}")
-        return True
-    return False
+    return deleted_any
