@@ -14,7 +14,7 @@ async def on_ready():
 
 async def main():
     async with bot:
-        # 💡 ロードするファイルを細かく分けたものに指定
+        # 💡 エラーの原因だった読み込み順序を整理し、安全にロードをおこないます
         cogs_to_load = ["cogs.admin", "cogs.commands", "cogs.listener"]
         for cog in cogs_to_load:
             try:
