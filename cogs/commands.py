@@ -5,7 +5,6 @@ from discord.ext import commands
 
 from utils import build_archive_embed, search_archive_data, delete_category_logs
 
-# 他のファイルとも共有するグローバル変数・キャッシュ
 post_id, archive_id, storage_vc_id = None, None, None
 cached_folders = {} # {user_id: [folder_names]}
 
@@ -95,6 +94,7 @@ class CommandsCog(commands.Cog):
             load_channel_ids(guild)
         await sync_all_cached_folders(self.bot)
 
+    # 💡 コマンド単体で確実に完結させるための自分専用URL追加用スラッシュコマンド
     @app_commands.command(name="archive_add", description="【自分専用表示】URLを指定したフォルダへ安全に格納します")
     @app_commands.describe(url="保存したいウェブサイトや動画のURL")
     async def archive_add(self, interaction: discord.Interaction, url: str):
@@ -123,7 +123,7 @@ class CommandsCog(commands.Cog):
         if interaction.guild:
             self.bot.loop.create_task(self.update_archive_channel_embed(interaction.guild, interaction.user.id, interaction.user.display_name))
 
-    # 💡 【完全必須化】url引数に初期値を設定せず、nameとurlの2つを絶対に両方入力させるコマンドの定義です
+    # 💡 【完全確定の必須化】name と url どちらも入力しないと絶対に送信できない正規の必須型コマンド定義
     @app_commands.command(name="category_add", description="新しくデータを仕分けるフォルダカテゴリーを追加します")
     @app_commands.describe(name="追加するフォルダ名（例：動画、イラストなど）", url="このフォルダの基本となるURLリンク（例：https://youtube.com）")
     async def category_add(self, interaction: discord.Interaction, name: str, url: str):
@@ -134,7 +134,7 @@ class CommandsCog(commands.Cog):
             await interaction.response.send_message("❌ まだ `/setup` が完了していないか、金庫が見つかりません。", ephemeral=True)
             return
             
-        # 金庫に2つのデータを書き込みます
+        # 2つの必須項目を完全に金庫へ刻みます
         await storage_vc.send(
             f"🆕NEW_FOLDER:{name}\n"
             f"👤USER:{interaction.user.id}\n"
