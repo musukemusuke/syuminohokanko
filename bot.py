@@ -4,8 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-# 外部ファイルを正確にインポート
-from restore import check_and_restore_messages
+# 完全に不要になった restore のインポート行を完全に削除しました
 from utils import build_archive_embed
 from views import ArchiveViewButton, CategorySelectView
 
@@ -22,6 +21,22 @@ async def my_embed_factory(user_id, display_name):
     )
 
 
+# 仕分け完了時にアーカイブ画面を自動リフレッシュする処理
+async def update_archive_channel_embed(guild, user_id, display_name):
+    ch_archive = bot.get_channel(archive_id)
+    if not ch_archive:
+        return
+    new_embed = await my_embed_factory(user_id, display_name)
+    if not new_embed:
+        return
+
+    async for msg in ch_archive.history(limit=20):
+        if msg.author == bot.user and msg.embeds:
+            await msg.edit(embed=new_embed)
+            print(f"[{guild.name}] アーカイブ画面を更新しました。")
+            break
+
+
 @bot.tree.command(
     name="setup",
     description="【管理者専用】ブックマーク用のカテゴリーとチャンネルを生成します",
@@ -36,6 +51,7 @@ async def setup_channels(interaction: discord.Interaction):
         await guild.create_category(name="📁 ブックマーク")
     )
 
+    # トピック（説明文）付きでテキストチャンネルを生成
     ch_post = discord.utils.get(
         cat.text_channels, name="📥・ブックマーク"
     ) or (
@@ -45,25 +61,27 @@ async def setup_channels(interaction: discord.Interaction):
             topic="ここに動画や画像のURLを貼ると、ボットが自動で仕分けを案内します。",
         )
     )
+
+    topic_text = (
+        "`/archive_view` コマンドで、これまでに"
+        "集めたデータ一覧をここに表示できます。"
+    )
     ch_arc = discord.utils.get(
         cat.text_channels, name="📚・アーカイブ"
     ) or (
         await guild.create_text_channel(
-            name="📚・アーカイブ",
-            category=cat,
-            topic="`/archive_view` コマンドで、これまでに集めたデータ一覧をここに表示できます。",
+            name="📚・アーカイブ", category=cat, topic=topic_text
         )
     )
+
     ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
 
-    # ★【完全非表示金庫】システムにブロックされずに、全人類からHideするVCを確実に生成
+    # 全人類・オーナーから完全非表示の金庫VCを生成
     if not ch_vc:
         overwrites = {
-            # サーバーの基本ロール「@everyone」の閲覧と接続を完全に禁止にする
             guild.default_role: discord.PermissionOverwrite(
                 view_channel=False, connect=False
             ),
-            # ボット自身だけが見える・書ける設定にする（クラッシュを根絶）
             guild.me: discord.PermissionOverwrite(
                 view_channel=True, connect=True, send_messages=True
             ),
@@ -74,11 +92,9 @@ async def setup_channels(interaction: discord.Interaction):
 
     post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
 
-    await ch_post.send(
-        "📌 **ブックマーク・アーカイブボットへようこそ！**\n1. まずは `/category_add` コマンドで、好きなフォルダを作ってください。\n2. その後、このチャンネルに動画URLや画像を貼り付けると、自動で仕分けメニューが出現します！"
-    )
+    # アーカイブ部屋に「本棚ボタン」だけをスマートに設置
     await ch_arc.send(
-        "以下のボタンを押すと、あなたが保存した趣味のデータ一覧を本人にだけ見える形で表示します。",
+        "ボタンを押すと、あなたが保存したデータ一覧を表示します。",
         view=ArchiveViewButton(my_embed_factory),
     )
     await interaction.followup.send(
@@ -119,14 +135,6 @@ async def archive_view(interaction: discord.Interaction):
 
 
 @bot.event
-async def on_message_delete(message: discord.Message):
-    if message.author == bot.user:
-        await check_and_restore_messages(
-            bot, post_id, archive_id, ArchiveViewButton(my_embed_factory)
-        )
-
-
-@bot.event
 async def on_message(message: discord.Message):
     if message.author.bot or message.channel.id != post_id:
         return
@@ -163,7 +171,18 @@ async def on_message(message: discord.Message):
         )
         await message.reply("どのフォルダにアーカイブしますか？", view=view)
 
+        bot.loop.create_task(
+            watch_and_refresh_archive(
+                message.guild, message.author.id, message.author.display_name
+            )
+        )
+
     await bot.process_commands(message)
+
+
+async def watch_and_refresh_archive(guild, user_id, display_name):
+    await asyncio.sleep(2)
+    await update_archive_channel_embed(guild, user_id, display_name)
 
 
 @bot.event
