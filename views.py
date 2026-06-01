@@ -45,31 +45,3 @@ class CategorySelectView(discord.ui.View):
         self.add_item(
             CategorySelect(categories, message_id, post_id, vc_id)
         )
-
-
-class ArchiveViewButton(discord.ui.View):
-
-    def __init__(self, build_embed_func):
-        super().__init__(timeout=None)
-        self.build_embed_func = build_embed_func
-
-    @discord.ui.button(
-        label="自分のブックマークを見る",
-        style=discord.ButtonStyle.primary,
-        custom_id="view_my_archive",
-        emoji="📚",
-    )
-    async def view_archive(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        await interaction.response.defer(ephemeral=True)
-        embed = await self.build_embed_func(
-            interaction.user.id, interaction.user.display_name
-        )
-        if embed is None:
-            await interaction.followup.send(
-                "📭 まだフォルダがありません。最初に `/category_add` で作ってください。",
-                ephemeral=True,
-            )
-        else:
-            await interaction.followup.send(embed=embed, ephemeral=True)
