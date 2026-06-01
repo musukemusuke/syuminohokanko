@@ -4,7 +4,6 @@ import discord
 from discord.ext import commands
 import traceback
 
-# ====================== Bot設定 ======================
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -32,12 +31,11 @@ async def load_cogs():
             traceback.print_exc()
 
 
-async def sync_all_commands(guild: discord.Guild = None):
-    """同期専用関数"""
-    print("🔄 コマンド同期を開始...")
-
+async def sync_all_commands(guild=None):
+    """コマンド同期専用関数"""
+    print("🔄 コマンド同期開始...")
     try:
-        if guild:  # 特定サーバーのみ
+        if guild:  # 特定サーバー
             bot.tree.copy_global_to(guild=guild)
             await bot.tree.sync(guild=guild)
             print(f"→ {guild.name} に同期完了")
@@ -46,7 +44,7 @@ async def sync_all_commands(guild: discord.Guild = None):
                 bot.tree.copy_global_to(guild=g)
                 await bot.tree.sync(guild=g)
                 print(f"→ {g.name} に同期完了")
-                await asyncio.sleep(0.8)  # レート制限対策
+                await asyncio.sleep(0.8)
         print("✅ コマンド同期完了")
         return True
     except Exception as e:
@@ -59,15 +57,14 @@ async def main():
     async with bot:
         await load_cogs()
 
-        # 起動時は最小限の同期（参加サーバーが少ない場合のみ）
-        if bot.guilds and len(bot.guilds) <= 5:   # 5サーバー以下なら自動同期
+        # 起動時は5サーバー以下の場合のみ自動同期
+        if bot.guilds and len(bot.guilds) <= 5:
             await sync_all_commands()
 
         token = os.getenv("DISCORD_BOT_TOKEN")
         if not token:
             print("❌ DISCORD_BOT_TOKEN が設定されていません")
             return
-
         await bot.start(token)
 
 
@@ -75,6 +72,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("🛑 ボットを停止します...")
+        print("🛑 停止します...")
     except Exception as e:
         traceback.print_exc()
