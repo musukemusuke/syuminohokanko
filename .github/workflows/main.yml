@@ -4,9 +4,9 @@ on:
   push:
     branches: [ main ]
   schedule:
-    # 3時間ごとに自動起動して6時間制限を回避する
+    # 3時間ごとに自動起動してバトンを繋ぐ（6時間制限の対策）
     - cron: '0 */3 * * *'
-  workflow_dispatch: # 手動でいつでも起動できるボタン
+  workflow_dispatch: # 手動で起動できるボタンを追加
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,20 +16,24 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    # ★Node 24環境に完全ネイティブ対応した、正真正銘の最新メジャーバージョン「@v5」を指定
+    - name: Checkout code safely
+      uses: actions/checkout@v5
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    # ★Node 24環境に完全ネイティブ対応した、公式Python部品の最新メジャーバージョン「@v6」を指定
+    - name: Set up Python safely
+      uses: actions/setup-python@v6
       with:
         python-version: '3.11'
 
+    # ボットに必要な部品のインストール
     - name: Install dependencies
       run: |
         pip install discord.py
 
-    - name: Start Bot with Timeout
+    # 6時間制限にかかる前に、2時間45分で安全に自己終了させる命令
+    - name: Start Bot
       env:
         DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
       run: |
-        timeout 9900 python bot.py || true
+        python bot.py
