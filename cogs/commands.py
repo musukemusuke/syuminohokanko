@@ -5,7 +5,7 @@ from discord.ext import commands
 
 from utils import build_archive_embed, search_archive_data, delete_category_logs
 
-# グローバル変数・キャッシュ
+# 他のファイルとも共有するグローバル変数・キャッシュ
 post_id, archive_id, storage_vc_id = None, None, None
 cached_folders = {} # {user_id: [folder_names]}
 
@@ -123,10 +123,11 @@ class CommandsCog(commands.Cog):
         if interaction.guild:
             self.bot.loop.create_task(self.update_archive_channel_embed(interaction.guild, interaction.user.id, interaction.user.display_name))
 
-    # 💡 【機能拡張】name に加えて url 引数を追加（URLは任意入力、入れなくても動くように default=None）
+    # 💡 【完全修正】url=None のような初期値（省略用の設定）を取り払い、
+    # name と url の両方を「入力しなければ絶対にコマンドを実行できない必須項目」に変更しました。
     @app_commands.command(name="category_add", description="新しくデータを仕分けるフォルダカテゴリーを追加します")
-    @app_commands.describe(name="追加するフォルダ名", url="フォルダのトップに紐付けたい代表URL（任意）")
-    async def category_add(self, interaction: discord.Interaction, name: str, url: str = None):
+    @app_commands.describe(name="追加するフォルダ名（例：動画、イラストなど）", url="このフォルダの基本となるURLリンク（例：https://youtube.com）")
+    async def category_add(self, interaction: discord.Interaction, name: str, url: str):
         global storage_vc_id
         if not storage_vc_id and interaction.guild: load_channel_ids(interaction.guild)
         storage_vc = self.bot.get_channel(storage_vc_id)
@@ -134,22 +135,22 @@ class CommandsCog(commands.Cog):
             await interaction.response.send_message("❌ まだ `/setup` が完了していないか、金庫が見つかりません。", ephemeral=True)
             return
             
-        # 金庫へ送るログに URL 情報も追加
-        log_msg = f"🆕NEW_FOLDER:{name}\n👤USER:{interaction.user.id}"
-        if url:
-            log_msg += f"\n🔗LINK:{url}"
-            
-        await storage_vc.send(log_msg)
+        # 2つのデータを金庫に確実に刻み込みます
+        await storage_vc.send(
+            f"🆕NEW_FOLDER:{name}\n"
+            f"👤USER:{interaction.user.id}\n"
+            f"🔗LINK:{url}"
+        )
         await sync_all_cached_folders(self.bot)
         
-        desc = f"📂 フォルダ 「**{name}**」 を新規作成しました！"
-        if url:
-            desc += f"\n🔗 代表リンク: {url}"
-            
-        embed = discord.Embed(description=desc, color=0xd4af37)
+        embed = discord.Embed(
+            description=f"📂 フォルダ 「**{name}**」 を新規作成しました！\n🔗 フォルダのベースURL: {url}",
+            color=0xd4af37
+        )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="category_delete", description="作成したフォルダカテゴリーを中身ごと完全に削除します")
+    @app_commands.describe(name="削除したいフォルダ名")
     async def category_delete(self, interaction: discord.Interaction, name: str):
         await interaction.response.defer(ephemeral=True)
         global storage_vc_id
@@ -180,6 +181,7 @@ class CommandsCog(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="archive_search", description="キーワードを使って保存したデータを検索します")
+    @app_commands.describe(keyword="検索したい言葉")
     async def archive_search(self, interaction: discord.Interaction, keyword: str):
         await interaction.response.defer(ephemeral=True)
         global storage_vc_id
