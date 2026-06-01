@@ -3,16 +3,18 @@ import discord
 
 class CategorySelect(discord.ui.Select):
 
-    def __init__(self, categories, message, post_id, vc_id):
-        self.orig_msg = message
+    def __init__(self, categories, message_id, post_id, vc_id):
+        self.message_id = message_id
         self.post_id = post_id
         self.vc_id = vc_id
         options = [
-            discord.SelectOption(label=cat, description=f"「{cat}」に保存")
+            discord.SelectOption(
+                label=cat, description=f"フォルダ「{cat}」に保存します"
+            )
             for cat in categories
         ]
         super().__init__(
-            placeholder="フォルダを選択...",
+            placeholder="保存するフォルダを選択してください...",
             min_values=1,
             max_values=1,
             options=options,
@@ -24,40 +26,25 @@ class CategorySelect(discord.ui.Select):
         if not storage_vc:
             return
 
-        saved_url = ""
-        if self.orig_msg.attachments:
-            for attachment in self.orig_msg.attachments:
-                file_data = await attachment.to_file()
-                backup_msg = await storage_vc.send(
-                    content="📦 BACKUP", file=file_data
-                )
-                saved_url = backup_msg.attachments.url
-                break
-        else:
-            for word in self.orig_msg.content.split():
-                if word.startswith("http"):
-                    backup_msg = await storage_vc.send(content=f"🔗 {word}")
-                    saved_url = word
-                    break
+        selected_folder = self.values
+        archive_link = f"https://discord.com{interaction.guild_id}/{self.post_id}/{self.message_id}"
 
-        if saved_url:
-            log_text = (
-                f"📁FOLDER:{self.values}\n"
-                f"👤USER:{interaction.user.id}\n"
-                f"🔗DATA:{saved_url}"
-            )
-            await storage_vc.send(log_text)
-            await interaction.followup.send(
-                f"✅ **{self.values}** に保存しました！",
-                ephemeral=True,
-            )
+        await storage_vc.send(
+            f"📁FOLDER:{selected_folder}\n👤USER:{interaction.user.id}\n🔗LINK:{archive_link}"
+        )
+        await interaction.followup.send(
+            f"✅ **{selected_folder}** フォルダに登録しました！",
+            ephemeral=True,
+        )
 
 
 class CategorySelectView(discord.ui.View):
 
-    def __init__(self, categories, message, post_id, vc_id):
+    def __init__(self, categories, message_id, post_id, vc_id):
         super().__init__(timeout=60)
-        self.add_item(CategorySelect(categories, message, post_id, vc_id))
+        self.add_item(
+            CategorySelect(categories, message_id, post_id, vc_id)
+        )
 
 
 class ArchiveViewButton(discord.ui.View):
@@ -81,7 +68,7 @@ class ArchiveViewButton(discord.ui.View):
         )
         if embed is None:
             await interaction.followup.send(
-                "📭 まだ仕分けフォルダがありません。最初に `/category_add` で作ってください。",
+                "📭 まだフォルダがありません。最初に `/category_add` で作ってください。",
                 ephemeral=True,
             )
         else:
