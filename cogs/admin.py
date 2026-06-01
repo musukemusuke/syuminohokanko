@@ -66,7 +66,7 @@ class AdminCog(commands.Cog):
 
             embed = discord.Embed(
                 title="✨ システムセットアップ完了",
-                description="趣味の保管庫に必要なチャンネルと秘密の金庫の生成・同期が正常に完了しました。",
+                description="趣味の保管庫に必要なチャンネルと秘密の金庫的生成・同期が正常に完了しました。",
                 color=0x2f3136
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
