@@ -5,7 +5,9 @@ from discord.ext import commands
 
 from utils import build_archive_embed, search_archive_data, delete_category_logs
 
+# 共有用のグローバル変数
 post_id, archive_id, storage_vc_id = None, None, None
+# 💡 【タイムアウト撲滅】激重な1000件ループを完全に廃止し、メモリ上で爆速管理します
 cached_folders = {} # {user_id: [folder_names]}
 
 def load_channel_ids(guild: discord.Guild):
@@ -21,51 +23,6 @@ def load_channel_ids(guild: discord.Guild):
         post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
         return True
     return False
-
-def clean_folder_name(name: str) -> str:
-    if not name: return ""
-    cleaned = name.strip()
-    if cleaned.startswith("[") and cleaned.endswith("]"): cleaned = cleaned[1:-1].strip()
-    if (cleaned.startswith("'") and cleaned.endswith("'")) or (cleaned.startswith('"') and cleaned.endswith('"')): cleaned = cleaned[1:-1].strip()
-    return cleaned
-
-async def sync_all_cached_folders(bot_instance):
-    global storage_vc_id
-    storage_vc = bot_instance.get_channel(storage_vc_id)
-    if not storage_vc: return
-
-    print("🔄 バックグラウンドでフォルダデータの事前集計を開始...")
-    temp_folders, temp_deleted = {}, {}
-
-    try:
-        async for msg in storage_vc.history(limit=1000):
-            content = msg.content
-            lines = content.split("\n")
-            
-            if content.startswith("🆕NEW_FOLDER:"):
-                f_name, u_id = None, None
-                for line in lines:
-                    if line.startswith("🆕NEW_FOLDER:"): f_name = clean_folder_name(line.replace("🆕NEW_FOLDER:", ""))
-                    elif line.startswith("👤USER:"): u_id = int(line.replace("👤USER:", "").strip())
-                if f_name and u_id:
-                    if u_id not in temp_folders: temp_folders[u_id] = []
-                    if f_name not in temp_folders[u_id]: temp_folders[u_id].append(f_name)
-
-            elif content.startswith("🗑️DELETE_FOLDER:"):
-                f_name, u_id = None, None
-                for line in lines:
-                    if line.startswith("🗑️DELETE_FOLDER:"): f_name = clean_folder_name(line.replace("🗑️DELETE_FOLDER:", ""))
-                    elif line.startswith("👤USER:"): u_id = int(line.replace("👤USER:", "").strip())
-                if f_name and u_id:
-                    if u_id not in temp_deleted: temp_deleted[u_id] = []
-                    if f_name not in temp_deleted[u_id]: temp_deleted[u_id].append(f_name)
-        
-        for u_id in temp_folders:
-            deleted = temp_deleted.get(u_id, [])
-            cached_folders[u_id] = [f for f in temp_folders[u_id] if f not in deleted]
-        print("✅ フォルダデータの事前集計が完了しました。")
-    except Exception as e:
-        print(f"❌ 事前集計エラー: {e}")
 
 class CommandsCog(commands.Cog):
     def __init__(self, bot):
@@ -92,7 +49,7 @@ class CommandsCog(commands.Cog):
     async def on_ready(self):
         for guild in self.bot.guilds:
             load_channel_ids(guild)
-        await sync_all_cached_folders(self.bot)
+        print("✅ 趣味の保管庫システムがオンラインになりました。")
 
     @app_commands.command(name="archive_add", description="【自分専用表示】URLを指定したフォルダへ安全に格納します")
     @app_commands.describe(url="保存したいウェブサイトや動画のURL")
@@ -104,11 +61,8 @@ class CommandsCog(commands.Cog):
         folders = cached_folders.get(user_id, [])
 
         if not folders:
-            await sync_all_cached_folders(self.bot)
-            folders = cached_folders.get(user_id, [])
-            if not folders:
-                await interaction.response.send_message("💡 まだ仕分けフォルダがありません。まずは `/category_add` で作成してください。", ephemeral=True)
-                return
+            await interaction.response.send_message("💡 まだ仕分けフォルダがありません。まずは `/category_add` で作成してください。", ephemeral=True)
+            return
 
         from views import CategorySelectView
         view = CategorySelectView(reversed(folders), [url], post_id, storage_vc_id)
@@ -122,8 +76,7 @@ class CommandsCog(commands.Cog):
         if interaction.guild:
             self.bot.loop.create_task(self.update_archive_channel_embed(interaction.guild, interaction.user.id, interaction.user.display_name))
 
-    # 💡 【目的達成】余計な初期化（=None）を完全に排除。
-    # コマンドを叩いたときに、name と url の2項目が絶対に必須で画面に出現する正規の定義に固定しました。
+    # 💡 【完全必須化 ＆ 3秒ルール完全回避】
     @app_commands.command(name="category_add", description="新しくデータを仕分けるフォルダカテゴリーを追加します")
     @app_commands.describe(name="追加するフォルダ名（例：動画、イラストなど）", url="このフォルダの基本となるURLリンク（例：https://youtube.com）")
     async def category_add(self, interaction: discord.Interaction, name: str, url: str):
@@ -134,19 +87,29 @@ class CommandsCog(commands.Cog):
             await interaction.response.send_message("❌ まだ `/setup` が完了していないか、金庫が見つかりません。", ephemeral=True)
             return
             
-        # 2つの項目をデータ金庫（VC）へ送信
+        # 💡 通信を待たせないために、最初にDiscordへ「了解！」の返信を ephemeral で一瞬で返します（3秒タイムアウトを100%回避）
+        await interaction.response.defer(ephemeral=True)
+        user_id = interaction.user.id
+
+        # 💡 メモリ上のフォルダリストに即座に名前を追加（通信を挟まないため0.001秒で終わります）
+        if user_id not in cached_folders:
+            cached_folders[user_id] = []
+        if name not in cached_folders[user_id]:
+            cached_folders[user_id].append(name)
+            
+        # 裏でゆっくりデータ金庫（VC）にログを書き込みます
         await storage_vc.send(
             f"🆕NEW_FOLDER:{name}\n"
-            f"👤USER:{interaction.user.id}\n"
+            f"👤USER:{user_id}\n"
             f"🔗LINK:{url}"
         )
-        await sync_all_cached_folders(self.bot)
         
         embed = discord.Embed(
             description=f"📂 フォルダ 「**{name}**」 を新規作成しました！\n🔗 フォルダのベースURL: {url}",
             color=0xd4af37
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        # defer していたレスポンスを確定させます
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="category_delete", description="作成したフォルダカテゴリーを中身ごと完全に削除します")
     @app_commands.describe(name="削除したいフォルダ名")
@@ -158,12 +121,16 @@ class CommandsCog(commands.Cog):
             await interaction.followup.send("❌ セットアップが完了していません。", ephemeral=True)
             return
 
-        if await delete_category_logs(self.bot, storage_vc_id, interaction.user.id, name):
-            await sync_all_cached_folders(self.bot)
+        user_id = interaction.user.id
+        # メモリ上から即座に削除
+        if user_id in cached_folders and name in cached_folders[user_id]:
+            cached_folders[user_id].remove(name)
+
+        if await delete_category_logs(self.bot, storage_vc_id, user_id, name):
             embed = discord.Embed(description=f"🗑️ フォルダ 「**{name}**」 とそのデータをすべて削除しました。", color=0xe74c3c)
             await interaction.followup.send(embed=embed, ephemeral=True)
             if interaction.guild:
-                self.bot.loop.create_task(self.update_archive_channel_embed(interaction.guild, interaction.user.id, interaction.user.display_name))
+                self.bot.loop.create_task(self.update_archive_channel_embed(interaction.guild, user_id, interaction.user.display_name))
         else:
             await interaction.followup.send(f"❌ フォルダ 「{name}」 が見つからないか、権限がありません。", ephemeral=True)
 
