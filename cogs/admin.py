@@ -7,17 +7,12 @@ class AdminCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # 💡 起動時に最新の管理者コマンド（/setupなど）をDiscordへ強制反映させます
     @commands.Cog.listener()
     async def on_ready(self):
+        print("✅ AdminCogがロードされました。")
+        # 同期は必要最小限に（初回起動時や明示的なコマンドでのみ実行推奨）
         for guild in self.bot.guilds:
-            try:
-                # このサーバーに最新の管理者コマンドをコピーして同期（即時反映）
-                self.bot.tree.copy_global_to(guild=guild)
-                await self.bot.tree.sync(guild=guild)
-                print(f"[{guild.name}] へ管理者コマンドを同期しました！")
-            except Exception as e:
-                print(f"[{guild.name}] 管理者コマンド同期エラー: {e}")
+            print(f"[{guild.name}] セットアップ準備完了")
 
     @app_commands.command(
         name="setup",
@@ -30,64 +25,79 @@ class AdminCog(commands.Cog):
 
         try:
             cat_name = "📁 ブックマーク"
-            cat = discord.utils.get(guild.categories, name=cat_name) or (
-                await guild.create_category(name=cat_name)
-            )
+            category = discord.utils.get(guild.categories, name=cat_name)
+            if not category:
+                category = await guild.create_category(name=cat_name)
 
-            post_topic = (
-                "まずは `/category_add` でフォルダを作ってください。\n"
-                "ここにURLを投稿すると自動で仕分けが行われます。"
-            )
-            ch_post = discord.utils.get(
-                cat.text_channels, name="📥・ブックマーク"
-            ) or (
-                await guild.create_text_channel(
-                    name="📥・ブックマーク", category=cat, topic=post_topic
+            # 📥・ブックマーク
+            post_ch = discord.utils.get(category.text_channels, name="📥・ブックマーク")
+            if not post_ch:
+                post_topic = (
+                    "ここにURLを投稿すると自動で保存メニューが出ます。\n"
+                    "まずは `/category_add フォルダ名 URL` でフォルダを作成してください。"
                 )
-            )
-
-            topic_text = (
-                "`/archive_view` または `/archive_search` で保存したデータをいつでも確認・検索できます。"
-            )
-            ch_arc = discord.utils.get(
-                cat.text_channels, name="📚・アーカイブ"
-            ) or (
-                await guild.create_text_channel(
-                    name="📚・アーカイブ", category=cat, topic=topic_text
+                post_ch = await guild.create_text_channel(
+                    name="📥・ブックマーク", 
+                    category=category, 
+                    topic=post_topic
                 )
-            )
 
-            ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
+            # 📚・アーカイブ
+            arc_ch = discord.utils.get(category.text_channels, name="📚・アーカイブ")
+            if not arc_ch:
+                arc_topic = "`/archive_view` で自分のアーカイブを確認できます。"
+                arc_ch = await guild.create_text_channel(
+                    name="📚・アーカイブ", 
+                    category=category, 
+                    topic=arc_topic
+                )
 
-            if not ch_vc:
+            # 🤫・データ金庫
+            vc = discord.utils.get(category.voice_channels, name="🤫・データ金庫")
+            if not vc:
                 overwrites = {
                     guild.default_role: discord.PermissionOverwrite(
-                        view_channel=False, connect=False
+                        view_channel=False, 
+                        connect=False
                     ),
                     guild.me: discord.PermissionOverwrite(
-                        view_channel=True, connect=True, send_messages=True
+                        view_channel=True, 
+                        connect=True, 
+                        send_messages=True
                     ),
                 }
-                ch_vc = await guild.create_voice_channel(
-                    name="🤫・データ金庫", category=cat, overwrites=overwrites
+                vc = await guild.create_voice_channel(
+                    name="🤫・データ金庫", 
+                    category=category, 
+                    overwrites=overwrites
                 )
 
-            # 💡 【バグの根本治療】フライング同期の重い処理を完全に消去しました
-            from cogs.commands import load_channel_ids
-            load_channel_ids(guild)
+            # CommandsCogのload_channel_idsを安全に呼び出し
+            commands_cog = self.bot.get_cog("CommandsCog")
+            if commands_cog and hasattr(commands_cog, "load_channel_ids"):
+                commands_cog.load_channel_ids(guild)
+            else:
+                print(f"[{guild.name}] CommandsCogが見つからないか、load_channel_idsがありません")
 
             embed = discord.Embed(
-                title="✨ システムセットアップ完了",
-                description="趣味の保管庫に必要なチャンネルと秘密の金庫の生成・同期が正常に完了しました。",
+                title="✨ セットアップ完了",
+                description="ブックマークカテゴリ、投稿チャンネル、アーカイブ、金庫の作成が完了しました。",
                 color=0x2f3136
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
         except discord.Forbidden:
-            await interaction.followup.send("❌ ボットの権限（チャンネル管理権限など）が不足しています。", ephemeral=True)
+            await interaction.followup.send(
+                "❌ ボットに「チャンネル管理」権限がありません。", 
+                ephemeral=True
+            )
         except Exception as e:
             traceback.print_exc()
-            await interaction.followup.send(f"❌ セットアップ中にエラーが発生しました: {e}", ephemeral=True)
+            await interaction.followup.send(
+                f"❌ セットアップ中にエラーが発生しました。\n```{e}```", 
+                ephemeral=True
+            )
+
 
 async def setup(bot):
     await bot.add_cog(AdminCog(bot))
