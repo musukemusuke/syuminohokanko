@@ -13,6 +13,7 @@ class ListenerCog(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author.bot: return
 
+        # cogs.commands から変数やキャッシュを安全に呼び出し
         import cogs.commands as cmd
         
         if message.guild and (not cmd.post_id or not cmd.storage_vc_id):
@@ -20,25 +21,47 @@ class ListenerCog(commands.Cog):
 
         if message.channel.id != cmd.post_id: return
 
-        # URLの抽出
+        # URLの抽出判定
         url_match = re.search(r"https?://[^\s]+", message.content)
         if not url_match: return
 
         url_list = [url_match.group(0)]
         user_id = message.author.id
 
+        # 記憶されたメモリ（キャッシュ）から引き出す
         folders = cmd.cached_folders.get(user_id, [])
 
         if not folders:
-            await cmd.sync_all_cached_folders(self.bot)
-            folders = cmd.cached_folders.get(user_id, [])
+            # 💡 【重要】commands.pyに統合された最新のキャッシュ空判定に対応
+            if user_id in cmd.cached_folders and cmd.cached_folders[user_id]:
+                folders = cmd.cached_folders[user_id]
+            else:
+                # キャッシュにまだ何もなければ、一度だけ金庫（VC）からデータを掘り起こす安全策
+                try:
+                    storage_vc = self.bot.get_channel(cmd.storage_vc_id)
+                    async for msg in storage_vc.history(limit=500):
+                        content = msg.content
+                        if content.startswith("🆕NEW_FOLDER:"):
+                            lines = content.split("\n")
+                            f_name, u_id = None, None
+                            for line in lines:
+                                if line.startswith("🆕NEW_FOLDER:"): f_name = cmd.clean_folder_name(line.replace("🆕NEW_FOLDER:", ""))
+                                elif line.startswith("👤USER:"): u_id = int(line.replace("👤USER:", "").strip())
+                            if f_name and u_id == user_id and f_name not in folders:
+                                folders.append(f_name)
+                    cmd.cached_folders[user_id] = folders
+                except:
+                    pass
+
             if not folders:
                 await message.reply("💡 まだ仕分けフォルダがありません。まずは `/category_add` で作成してください！")
                 return
 
+        # 元のURL投稿を即座に削除（チャットを一切汚さない）
         try: await message.delete()
         except: pass
 
+        # Webhookを生成して、最初から完全エフェメラル（自分限定）でメニューを送信
         try:
             webhook = await message.channel.create_webhook(name="Archiver-Proxy")
             view = CategorySelectView(reversed(folders), url_list, cmd.post_id, cmd.storage_vc_id)
@@ -58,6 +81,7 @@ class ListenerCog(commands.Cog):
         except Exception as e:
             print(f"[ERROR] エフェメラル配信エラー: {e}")
 
+        # 画面の自動更新
         async def refresh_task():
             await asyncio.sleep(2)
             cmd_cog = self.bot.get_cog("CommandsCog")
