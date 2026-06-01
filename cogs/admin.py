@@ -60,10 +60,9 @@ class AdminCog(commands.Cog):
                     name="🤫・データ金庫", category=cat, overwrites=overwrites
                 )
 
-            # 💡 【完全修正】cogs.bookmark からではなく、新設した cogs.commands から安全にIDを読み直します
-            from cogs.commands import load_channel_ids, sync_all_cached_folders
+            # 💡 【バグの根本治療】フライング同期の重い処理を完全に消去しました
+            from cogs.commands import load_channel_ids
             load_channel_ids(guild)
-            await sync_all_cached_folders(self.bot)
 
             embed = discord.Embed(
                 title="✨ システムセットアップ完了",
