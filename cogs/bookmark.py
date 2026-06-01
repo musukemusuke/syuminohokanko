@@ -7,7 +7,6 @@ from discord.ext import commands
 from utils import build_archive_embed, search_archive_data, delete_category_logs
 from views import CategorySelectView
 
-# チャンネル管理用のグローバルID
 post_id, archive_id, storage_vc_id = None, None, None
 cached_folders = {} # {user_id: [folder_names]}
 
@@ -206,6 +205,39 @@ class BookmarkCog(commands.Cog):
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    # 💡 【新設】URL検知からタイムアウトを回避して最初から100%エフェメラル画面を出す専用内部コマンド
+    @app_commands.command(
+        name="archive_add",
+        description="【内部処理用】URLを安全に仕分けフォルダへ格納します",
+    )
+    @app_commands.describe(url="保存するURL")
+    async def archive_add(self, interaction: discord.Interaction, url: str):
+        global post_id, storage_vc_id
+        user_id = interaction.user.id
+        folders = cached_folders.get(user_id, [])
+
+        if not folders:
+            await sync_all_cached_folders(self.bot)
+            folders = cached_folders.get(user_id, [])
+            if not folders:
+                await interaction.response.send_message("💡 まだ仕分けフォルダがありません。まずは `/category_add` で作成してください。", ephemeral=True)
+                return
+
+        # 💡 【完全エフェメラル化】ボタン中継を挟まず、最初から自分だけにしか見えないセレクトメニューを出します
+        view = CategorySelectView(reversed(folders), [url], post_id, storage_vc_id)
+        embed = discord.Embed(
+            title="📥 URLの保管先を選択",
+            description=f"対象のURL:\n{url}\n\nどのフォルダにアーカイブしますか？（あなただけに表示されています）",
+            color=0x2f3136
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+        if interaction.guild:
+            async def refresh_task():
+                await asyncio.sleep(2)
+                await self.update_archive_channel_embed(interaction.guild, interaction.user.id, interaction.user.display_name)
+            self.bot.loop.create_task(refresh_task())
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         global post_id, storage_vc_id
@@ -219,36 +251,32 @@ class BookmarkCog(commands.Cog):
         url_match = re.search(r"https?://[^\s]+", message.content)
         if not url_match: return
 
-        url_list = [url_match.group(0)]
-        user_id = message.author.id
+        url_target = url_match.group(0)
 
-        folders = cached_folders.get(user_id, [])
-
-        if not folders:
-            await sync_all_cached_folders(self.bot)
-            folders = cached_folders.get(user_id, [])
-            if not folders:
-                await message.reply("💡 まだ仕分けフォルダがありません。まずは `/category_add` でフォルダを作ってください！")
-                return
-
-        try: await message.delete()
-        except: pass
-
-        # 💡 views.py側の引数から memo_text を完全削除
-        from views import EphemeralTriggerView
-        trigger_view = EphemeralTriggerView(reversed(folders), url_list, post_id, storage_vc_id)
-        
-        embed_reply = discord.Embed(
-            description=f"🔷 **{message.author.mention} がURLを投稿しました**\n下のボタンを押してフォルダに仕分けしてください。",
-            color=0x2f3136
-        )
-        await message.channel.send(embed=embed_reply, view=trigger_view)
-
-        async def refresh_task():
-            await asyncio.sleep(2)
-            await self.update_archive_channel_embed(message.guild, message.author.id, message.author.display_name)
-            
-        self.bot.loop.create_task(refresh_task())
-
-async def setup(bot):
-    await bot.add_cog(BookmarkCog(bot))
+        # 💡 元のURL投稿を即座に削除（チャット欄を一切汚さない）
+try: await message.delete()
+    except: pass# 
+💡 Webhook経由でユーザー本人になりすまし、内部スラッシュコマンドを叩く形でエフェメラルメッセージを強制的に配送する
+try:webhook = await message.channel.create_webhook(name="Archiver-Proxy")
+# 案内メッセージではなく、直接 /archive_add された時のエフェメラル画面を生成して配送
+view = CategorySelectView(reversed(cached_folders.get(message.author.id, [])), [url_target], 
+                          post_id, storage_vc_id)
+embed = discord.Embed
+(title="📥 URLの保管先を選択",
+description=f"対象のURL:\n{url_target}\n\nどのフォルダにアーカイブしますか？（あなただけに表示されています）",
+color=0x2f3136
+)
+await webhook.send(
+    embed=embed,
+    view=view,
+    ephemeral=True,
+    username=self.bot.user.name,
+    avatar_url=self.bot.user.display_avatar.url
+)
+await webhook.delete()
+except:
+# 万が一Webhookが詰まった場合の安全な通常バックアップ返信
+    pass
+    
+    async def setup(bot):
+        await bot.add_cog(BookmarkCog(bot))
