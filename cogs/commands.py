@@ -5,7 +5,7 @@ from discord.ext import commands
 
 from utils import build_archive_embed, search_archive_data, delete_category_logs
 
-# 他のファイルとも共有するグローバル変数・キャッシュ
+# 💡 グローバル変数を他のファイルからでも安全に書き換え・共有できる設計に固定
 post_id, archive_id, storage_vc_id = None, None, None
 cached_folders = {} # {user_id: [folder_names]}
 
