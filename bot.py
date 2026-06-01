@@ -3,7 +3,7 @@ import os
 import discord
 from discord import app_commands
 from discord.ext import commands
-import traceback  # エラー表示用に追加
+import traceback
 
 from utils import build_archive_embed
 from views import CategorySelectView
@@ -12,10 +12,15 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
+# グローバル変数の定義
 post_id, archive_id, storage_vc_id = None, None, None
 
 
 async def my_embed_factory(user_id, display_name):
+    # storage_vc_id が None の場合は処理をスキップ
+    if not storage_vc_id:
+        print("[WARNING] 金庫チャンネルのIDが設定されていません。")
+        return None
     return await build_archive_embed(
         bot, storage_vc_id, user_id, display_name
     )
@@ -23,6 +28,8 @@ async def my_embed_factory(user_id, display_name):
 
 # 仕分け完了時にアーカイブ画面を自動リフレッシュする処理
 async def update_archive_channel_embed(guild, user_id, display_name):
+    if not archive_id:
+        return
     ch_archive = bot.get_channel(archive_id)
     if not ch_archive:
         return
@@ -35,6 +42,23 @@ async def update_archive_channel_embed(guild, user_id, display_name):
             await msg.edit(embed=new_embed)
             print(f"[{guild.name}] アーカイブ画面を更新しました。")
             break
+
+
+# 💡 【重要】起動時やコマンド実行時にチャンネルIDを自動的に復元する安全な関数
+def load_channel_ids(guild: discord.Guild):
+    global post_id, archive_id, storage_vc_id
+    cat = discord.utils.get(guild.categories, name="📁 ブックマーク")
+    if not cat:
+        return False
+    
+    ch_post = discord.utils.get(cat.text_channels, name="📥・ブックマーク")
+    ch_arc = discord.utils.get(cat.text_channels, name="📚・アーカイブ")
+    ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
+    
+    if ch_post and ch_arc and ch_vc:
+        post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
+        return True
+    return False
 
 
 @bot.tree.command(
@@ -53,7 +77,6 @@ async def setup_channels(interaction: discord.Interaction):
             await guild.create_category(name=cat_name)
         )
 
-        # ★【修正完了】変数のタイポを post_topic に修正
         post_topic = (
             "まずは `/category_add` コマンドで仕分けフォルダを作ってください。\n"
             "その後、ここに動画や画像のURLを貼ると自動仕分けが始まります。"
@@ -80,7 +103,6 @@ async def setup_channels(interaction: discord.Interaction):
 
         ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
 
-        # 全人類非表示の金庫VCを生成
         if not ch_vc:
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(
@@ -116,6 +138,11 @@ async def setup_channels(interaction: discord.Interaction):
 )
 @app_commands.describe(name="追加するフォルダ名（例：動画、イラスト、ゲームなど）")
 async def category_add(interaction: discord.Interaction, name: str):
+    global storage_vc_id
+    # 再起動対策：IDが空なら自動復元を試みる
+    if not storage_vc_id:
+        load_channel_ids(interaction.guild)
+
     storage_vc = bot.get_channel(storage_vc_id)
     if not storage_vc:
         await interaction.response.send_message("❌ まだ `/setup` が完了していないか、金庫が見つかりません。", ephemeral=True)
@@ -134,6 +161,11 @@ async def category_add(interaction: discord.Interaction, name: str):
 )
 async def archive_view(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
+    global storage_vc_id
+    # 再起動対策：IDが空なら自動復元を試みる
+    if not storage_vc_id:
+        load_channel_ids(interaction.guild)
+
     embed = await my_embed_factory(
         interaction.user.id, interaction.user.display_name
     )
@@ -148,7 +180,15 @@ async def archive_view(interaction: discord.Interaction):
 
 @bot.event
 async def on_message(message: discord.Message):
-    if message.author.bot or message.channel.id != post_id:
+    global post_id, storage_vc_id
+    if message.author.bot:
+        return
+
+    # 再起動対策：IDが空なら自動復元を試みる
+    if message.guild and (not post_id or not storage_vc_id):
+        load_channel_ids(message.guild)
+
+    if message.channel.id != post_id:
         return
 
     has_content = bool(message.attachments) or (
@@ -161,19 +201,25 @@ async def on_message(message: discord.Message):
 
         user_id = message.author.id
         folders = []
+        
+        # 💡 on_message内の文字列解析部分を、エラーの起きない安全なループ処理に完全置換
         async for msg in storage_vc.history(limit=1000):
             if msg.content.startswith("🆕NEW_FOLDER:"):
                 try:
                     lines = msg.content.split("\n")
-                    # 💡 安全に抽出できるように処理を整理
-                    u_id_text = lines[1].replace("👤USER:", "").strip()
-                    if int(u_id_text) == user_id:
-                        f_name = (
-                            lines[0].replace("🆕NEW_FOLDER:", "").strip()
-                        )
-                        if f_name not in folders:
+                    f_name, u_id_text = None, None
+                    
+                    for line in lines:
+                        if line.startswith("🆕NEW_FOLDER:"):
+                            f_name = line.replace("🆕NEW_FOLDER:", "").strip()
+                        elif line.startswith("👤USER:"):
+                            u_id_text = line.replace("👤USER:", "").strip()
+                            
+                    if f_name and u_id_text:
+                        if int(u_id_text) == user_id and f_name not in folders:
                             folders.append(f_name)
-                except:
+                except Exception as e:
+                    print(f"[DEBUG] on_message 解析エラー無視: {e}")
                     continue
 
         if not folders:
@@ -205,11 +251,15 @@ async def watch_and_refresh_archive(guild, user_id, display_name):
 async def on_ready():
     print(f"ログインしました: {bot.user.name}")
     await bot.tree.sync()
+    
+    # ボット起動時、参加しているサーバーのチャンネルIDを自動的にバックアップから復元する
+    for guild in bot.guilds:
+        if load_channel_ids(guild):
+            print(f"[{guild.name}] のチャンネル設定を自動的に復元しました。")
 
 
 async def main():
     async with bot:
-        # ★【修正】謎の長時間 sleep タスクを削除
         await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 
@@ -217,5 +267,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except Exception as e:
-        # ★【修正】エラーを揉み消さずコンソールに出力する
         traceback.print_exc()
