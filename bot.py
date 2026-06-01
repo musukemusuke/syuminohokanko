@@ -24,11 +24,16 @@ async def main():
                 print(f"❌ クラス {cog} のロードに失敗しました:")
                 traceback.print_exc()
 
-        # 💡 【完全治療】ルート直書きの古い定義が消えたクリーンな状態で、
-        # cogs.commands 側にある最新の name / url 必須コマンドを強制上書き同期します
+        # 💡 【完全治療】グローバル同期を廃止し、参加している各サーバーへ即時同期を実行します
         try:
-            print("🔄 スラッシュコマンド（name/url必須仕様）をDiscordへ完全同期中...")
-            await bot.tree.sync()
+            print("🔄 スラッシュコマンド（name/url必須仕様）を各サーバーへ即時同期中...")
+            
+            # 起動時に所属しているサーバーすべてに対して強制的に即時同期をかけます
+            for guild in bot.guilds:
+                bot.tree.copy_global_to(guild=guild)
+                await bot.tree.sync(guild=guild)
+                print(f"  → サーバー「{guild.name}」への即時同期が完了しました")
+                
             print("✅ すべてのスラッシュコマンドの画面更新が完了しました！")
         except Exception as e:
             print(f"❌ コマンド同期エラー: {e}")
