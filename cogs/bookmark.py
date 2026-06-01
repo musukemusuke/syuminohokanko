@@ -10,8 +10,7 @@ from views import CategorySelectView
 # チャンネル管理用のグローバルID
 post_id, archive_id, storage_vc_id = None, None, None
 
-# 💡 【タイムアウト対策の決定打】
-# URLを貼るたびに1000件の金庫履歴を読み込むのをやめ、起動時とフォルダ追加・削除時のみに同期します。
+# フォルダ名をメモリにキャッシュしてタイムアウトを防ぐ
 cached_folders = {} # {user_id: [folder_names]}
 
 def load_channel_ids(guild: discord.Guild):
@@ -39,15 +38,15 @@ def clean_folder_name(name: str) -> str:
         cleaned = cleaned[1:-1].strip()
     return cleaned
 
-# 💡 起動時に全ユーザーのフォルダデータを安全にバックグラウンドで集計する関数
+# 起動時に全ユーザーのフォルダデータをバックグラウンドで集計する関数
 async def sync_all_cached_folders(bot_instance):
     global storage_vc_id
     storage_vc = bot_instance.get_channel(storage_vc_id)
     if not storage_vc: return
 
     print("🔄 バックグラウンドでフォルダデータの事前集計を開始...")
-    temp_folders = {} # {user_id: [folders]}
-    temp_deleted = {} # {user_id: [deleted]}
+    temp_folders = {}
+    temp_deleted = {}
 
     try:
         async for msg in storage_vc.history(limit=1000):
@@ -72,13 +71,12 @@ async def sync_all_cached_folders(bot_instance):
                     if u_id not in temp_deleted: temp_deleted[u_id] = []
                     if f_name not in temp_deleted[u_id]: temp_deleted[u_id].append(f_name)
         
-        # 集計結果をキャッシュに書き込み
         for u_id in temp_folders:
             deleted = temp_deleted.get(u_id, [])
             cached_folders[u_id] = [f for f in temp_folders[u_id] if f not in deleted]
         print("✅ フォルダデータの事前集計が完了しました。")
     except Exception as e:
-        print(f"❌ 事前集集計エラー: {e}")
+        print(f"❌ 事前集計エラー: {e}")
 
 class BookmarkCog(commands.Cog):
     def __init__(self, bot):
@@ -112,7 +110,6 @@ class BookmarkCog(commands.Cog):
         for guild in self.bot.guilds:
             if load_channel_ids(guild):
                 print(f"[{guild.name}] のチャンネル設定を自動復元しました。")
-        # 起動直後に重い処理をあらかじめ終わらせておく
         await sync_all_cached_folders(self.bot)
 
     @app_commands.command(
@@ -134,7 +131,6 @@ class BookmarkCog(commands.Cog):
             f"🆕NEW_FOLDER:{name}\n" f"👤USER:{interaction.user.id}"
         )
         
-        # フォルダ追加時のみ、バックグラウンドでキャッシュを静かに更新
         await sync_all_cached_folders(self.bot)
         
         embed = discord.Embed(
@@ -223,7 +219,6 @@ class BookmarkCog(commands.Cog):
 
         if message.channel.id != post_id: return
 
-        # 💡 URL判定
         url_match = re.search(r"https?://[^\s]+", message.content)
         if not url_match: return
 
@@ -231,23 +226,18 @@ class BookmarkCog(commands.Cog):
         memo_text = message.content.strip()
         user_id = message.author.id
 
-        # 💡 【タイムアウト完全撲滅】重い歴史の全スキャンを100%カット。
-        # メモリ（キャッシュ）から一瞬で引き出すため、3秒以内に余裕で応答します。
         folders = cached_folders.get(user_id, [])
 
         if not folders:
-            # キャッシュが空の場合のみ、安全のために一度再同期を試みる
             await sync_all_cached_folders(self.bot)
             folders = cached_folders.get(user_id, [])
             if not folders:
                 await message.reply("💡 まだ仕分けフォルダがありません。まずは `/category_add` でフォルダを作ってください！")
                 return
 
-        # 元のURL投稿を即座に削除（チャット欄を汚さない）
         try: await message.delete()
         except: pass
 
-        # タイムアウトの心配が0になったため、一瞬でボタン案内メッセージを送信
         from views import EphemeralTriggerView
         trigger_view = EphemeralTriggerView(reversed(folders), url_list, post_id, storage_vc_id, memo_text)
         
@@ -259,11 +249,9 @@ class BookmarkCog(commands.Cog):
 
         async def refresh_task():
             await asyncio.sleep(2)
-
-await self.update_archive_channel_embed(message.guild, message.author.id, 
-message.author.display_name)
-
-self.bot.loop.create_task(refresh_task())
+            await self.update_archive_channel_embed(message.guild, message.author.id, message.author.display_name)
+            
+        self.bot.loop.create_task(refresh_task())
 
 async def setup(bot):
-await bot.add_cog(BookmarkCog(bot))
+    await bot.add_cog(BookmarkCog(bot))
