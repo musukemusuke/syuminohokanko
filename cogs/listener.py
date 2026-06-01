@@ -13,8 +13,7 @@ class ListenerCog(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author.bot: return
 
-        # 💡 【重要修正】循環インポートエラーを100%回避するため、
-        # cogs.commands モジュールから直接変数とキャッシュを安全に呼び出します
+        # 💡 commands.py から変数やキャッシュを安全に呼び出し
         import cogs.commands as cmd
         
         if message.guild and (not cmd.post_id or not cmd.storage_vc_id):
@@ -27,13 +26,13 @@ class ListenerCog(commands.Cog):
         if not url_match: return
 
         url_list = [url_match.group(0)]
-        memo_text = message.content.strip()
         user_id = message.author.id
 
         # 記憶されたメモリ（キャッシュ）から引き出す
         folders = cmd.cached_folders.get(user_id, [])
 
         if not folders:
+            # 💡 【重要修正】cmdモジュール内の sync_all_cached_folders を正しく呼び出します
             await cmd.sync_all_cached_folders(self.bot)
             folders = cmd.cached_folders.get(user_id, [])
             if not folders:
@@ -50,7 +49,7 @@ class ListenerCog(commands.Cog):
             view = CategorySelectView(reversed(folders), url_list, cmd.post_id, cmd.storage_vc_id)
             embed = discord.Embed(
                 title="📥 URLの保管先を選択",
-                description=f"対象のURL:\n{url_list}\n\nどのフォルダにアーカイブしますか？（あなただけに表示されています）",
+                description=f"対象のURL:\n{url_list[0]}\n\nどのフォルダにアーカイブしますか？（あなただけに表示されています）",
                 color=0x2f3136
             )
             await webhook.send(
