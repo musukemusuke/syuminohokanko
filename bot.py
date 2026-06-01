@@ -51,14 +51,16 @@ async def setup_channels(interaction: discord.Interaction):
         await guild.create_category(name=cat_name)
     )
 
-    # トピック説明文付きで部屋を生成
+    # ★【完全修正】お相手が最初に迷わないよう、/category_add の案内をトピックに明記
+    post_topic = (
+        "まずは `/category_add` コマンドで仕分けフォルダを作ってください。"
+        "その後、ここに動画や画像のURLを貼ると自動仕分けが始まります。"
+    )
     ch_post = discord.utils.get(
         cat.text_channels, name="📥・ブックマーク"
     ) or (
         await guild.create_text_channel(
-            name="📥・ブックマーク",
-            category=cat,
-            topic="ここに動画や画像のURLを貼ると、ボットが自動で仕分けを案内します。",
+            name="📥・ブックマーク", category=cat, topic=post_post
         )
     )
 
@@ -92,7 +94,6 @@ async def setup_channels(interaction: discord.Interaction):
 
     post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
 
-    # ★ チャットへの不要なテキスト送信をすべて無くしました（100%クリーン化）
     await interaction.followup.send(
         "✅ チャンネルと秘密金庫の生成が完了しました！", ephemeral=True
     )
