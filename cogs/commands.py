@@ -45,10 +45,18 @@ class CommandsCog(commands.Cog):
                 print(f"[{guild.name}] アーカイブ画面を自動更新しました。")
                 break
 
+    # 💡 起動時に最新のコマンド設定（/category_addの変更など）をDiscordへ強制反映させます
     @commands.Cog.listener()
     async def on_ready(self):
         for guild in self.bot.guilds:
             load_channel_ids(guild)
+            try:
+                # サーバーごとに最新のコマンドツリーを同期（即時反映）
+                self.bot.tree.copy_global_to(guild=guild)
+                await self.bot.tree.sync(guild=guild)
+                print(f"[{guild.name}] へ最新のコマンドを同期しました！")
+            except Exception as e:
+                print(f"[{guild.name}] 同期エラー: {e}")
         print("✅ 趣味の保管庫システムがオンラインになりました。")
 
     @app_commands.command(name="archive_add", description="【自分専用表示】URLを指定したフォルダへ安全に格納します")
@@ -118,7 +126,7 @@ class CommandsCog(commands.Cog):
         global storage_vc_id
         if not storage_vc_id and interaction.guild: load_channel_ids(interaction.guild)
         if not storage_vc_id:
-            await interaction.followup.send("❌ セットアップが完了していません。", ephemeral=True)
+            await interaction.followup.send("❌ セットアップが完了していないか、金庫が見つかりません。", ephemeral=True)
             return
 
         user_id = interaction.user.id
