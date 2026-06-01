@@ -10,6 +10,7 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
     archive_data = {}
 
     try:
+        # 最新のメッセージから履歴を追う
         async for msg in storage_vc.history(limit=1000):
             content = msg.content
             lines = content.split("\n")
@@ -36,13 +37,18 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
                     f_name, u_id_text, link = None, None, None
                     for line in lines:
                         if line.startswith("📁FOLDER:"):
-                            f_name = line.replace("📁FOLDER:", "").strip()
+                            # 💡 過去のクォーテーションや括弧の残骸（['動画']など）を綺麗にお掃除
+                            raw_f = line.replace("📁FOLDER:", "").strip()
+                            if raw_f.startswith("[") and raw_f.endswith("]"): raw_f = raw_f[1:-1].strip()
+                            if (raw_f.startswith("'") and raw_f.endswith("'")) or (raw_f.startswith('"') and raw_f.endswith('"')): raw_f = raw_f[1:-1].strip()
+                            f_name = raw_f
                         elif line.startswith("👤USER:"):
                             u_id_text = line.replace("👤USER:", "").strip()
                         elif line.startswith("🔗LINK:"):
                             link = line.replace("🔗LINK:", "").strip()
                             
-                    # 💡 MEMOやTIMEの有無を気にせず、リンクだけを純粋に取得して格納
+                    # 💡 【超重要】TIMEやMEMOが入っている古いログでも、入っていない新しいログでも、
+                    # どちらのパターンでも「URL(link)」さえ入っていれば100%確実に抽出してフォルダへ格納します
                     if f_name and u_id_text and link:
                         if int(u_id_text) == user_id:
                             if f_name not in archive_data:
@@ -56,7 +62,6 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
         traceback.print_exc()
         return None
 
-    folders = [f for f in folders if f not in deleted_folders] if 'deleted_folders' in locals() else folders
     if not folders:
         return None
 
@@ -70,6 +75,7 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
         item_links = []
         
         for link in items:
+            # 💡 余計な文字を挟まず、生URLのみを綺麗に整列
             item_links.append(f"{link}")
             
         item_list = "\n".join(item_links) if item_links else "*（空のフォルダです）*"
