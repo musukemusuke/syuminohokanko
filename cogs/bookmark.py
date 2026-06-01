@@ -9,8 +9,6 @@ from views import CategorySelectView
 
 # チャンネル管理用のグローバルID
 post_id, archive_id, storage_vc_id = None, None, None
-
-# フォルダ名をメモリにキャッシュしてタイムアウトを防ぐ
 cached_folders = {} # {user_id: [folder_names]}
 
 def load_channel_ids(guild: discord.Guild):
@@ -38,7 +36,6 @@ def clean_folder_name(name: str) -> str:
         cleaned = cleaned[1:-1].strip()
     return cleaned
 
-# 起動時に全ユーザーのフォルダデータをバックグラウンドで集計する関数
 async def sync_all_cached_folders(bot_instance):
     global storage_vc_id
     storage_vc = bot_instance.get_channel(storage_vc_id)
@@ -223,7 +220,6 @@ class BookmarkCog(commands.Cog):
         if not url_match: return
 
         url_list = [url_match.group(0)]
-        memo_text = message.content.strip()
         user_id = message.author.id
 
         folders = cached_folders.get(user_id, [])
@@ -238,8 +234,9 @@ class BookmarkCog(commands.Cog):
         try: await message.delete()
         except: pass
 
+        # 💡 views.py側の引数から memo_text を完全削除
         from views import EphemeralTriggerView
-        trigger_view = EphemeralTriggerView(reversed(folders), url_list, post_id, storage_vc_id, memo_text)
+        trigger_view = EphemeralTriggerView(reversed(folders), url_list, post_id, storage_vc_id)
         
         embed_reply = discord.Embed(
             description=f"🔷 **{message.author.mention} がURLを投稿しました**\n下のボタンを押してフォルダに仕分けしてください。",
