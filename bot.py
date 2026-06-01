@@ -4,45 +4,88 @@ import discord
 from discord.ext import commands
 import traceback
 
+# ====================== 基本設定 ======================
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="/", intents=intents)
+
+bot = commands.Bot(
+    command_prefix="!",  # スラッシュコマンドメインなのでプレフィックスはほぼ使わない
+    intents=intents,
+    help_command=None   # デフォルトhelpを無効化（任意）
+)
+
 
 @bot.event
 async def on_ready():
-    print(f"✨ ログインしました: {bot.user.name}")
+    print(f"✨ ログイン成功: {bot.user} ({bot.user.id})")
+    print(f"📊 参加サーバー数: {len(bot.guilds)} サーバー")
+
+
+async def load_cogs():
+    """cogを安全にロード"""
+    cogs = [
+        "cogs.admin",
+        "cogs.commands", 
+        "cogs.listener"
+    ]
+    
+    for cog in cogs:
+        try:
+            await bot.load_extension(cog)
+            print(f"✅ Cogロード成功: {cog}")
+        except Exception as e:
+            print(f"❌ Cogロード失敗: {cog}")
+            traceback.print_exc()
+
+
+async def sync_commands():
+    """スラッシュコマンドの同期（起動時は最小限に）"""
+    print("🔄 スラッシュコマンド同期を開始...")
+    
+    synced_count = 0
+    for guild in bot.guilds:
+        try:
+            # 必要に応じて一度クリア（コマンドが消えない問題対策）
+            # bot.tree.clear_commands(guild=guild)
+            
+            bot.tree.copy_global_to(guild=guild)
+            await bot.tree.sync(guild=guild)
+            
+            print(f"   → {guild.name} ({guild.id}) に同期完了")
+            synced_count += 1
+            
+            await asyncio.sleep(0.7)  # レート制限対策（少し余裕を持たせる）
+            
+        except discord.HTTPException as e:
+            print(f"   ⚠️  {guild.name} 同期エラー: {e.status} {e.text}")
+        except Exception as e:
+            print(f"   ❌  {guild.name} で予期せぬエラー: {e}")
+
+    print(f"✅ 同期完了: {synced_count}/{len(bot.guilds)} サーバー")
+
 
 async def main():
     async with bot:
-        # 💡 正しいCogsファイルのみを厳密にロードします
-        cogs_to_load = ["cogs.admin", "cogs.commands", "cogs.listener"]
-        for cog in cogs_to_load:
-            try:
-                await bot.load_extension(cog)
-                print(f"📦 ロード成功: {cog}")
-            except Exception as e:
-                print(f"❌ クラス {cog} のロードに失敗しました:")
-                traceback.print_exc()
+        await load_cogs()
+        
+        # 同期は起動時でも行うが、控えめに
+        if bot.guilds:
+            await sync_commands()
+        else:
+            print("⚠️ 現在どのサーバーにも参加していません。")
 
-        # 💡 【完全治療】グローバル同期を廃止し、参加している各サーバーへ即時同期を実行します
-        try:
-            print("🔄 スラッシュコマンド（name/url必須仕様）を各サーバーへ即時同期中...")
+        token = os.getenv("DISCORD_BOT_TOKEN")
+        if not token:
+            print("❌ DISCORD_BOT_TOKEN が環境変数に設定されていません。")
+            return
             
-            # 起動時に所属しているサーバーすべてに対して強制的に即時同期をかけます
-            for guild in bot.guilds:
-                bot.tree.copy_global_to(guild=guild)
-                await bot.tree.sync(guild=guild)
-                print(f"  → サーバー「{guild.name}」への即時同期が完了しました")
-                
-            print("✅ すべてのスラッシュコマンドの画面更新が完了しました！")
-        except Exception as e:
-            print(f"❌ コマンド同期エラー: {e}")
+        await bot.start(token)
 
-        # ボットの起動
-        await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n🛑 ボットを停止します...")
     except Exception as e:
         traceback.print_exc()
