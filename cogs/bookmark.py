@@ -25,11 +25,10 @@ def load_channel_ids(guild: discord.Guild):
         return True
     return False
 
-# 💡 過去の書き込みバグ（括弧やクォーテーション）を綺麗に消し去るお掃除関数
+# 過去の書き込みバグ（括弧やクォーテーション）を綺麗に消し去るお掃除関数
 def clean_folder_name(name: str) -> str:
     if not name:
         return ""
-    # ['動画'] や ["動画"] の形式を、純粋な 動画 という文字列に戻す
     cleaned = name.strip()
     if cleaned.startswith("[") and cleaned.endswith("]"):
         cleaned = cleaned[1:-1].strip()
@@ -106,8 +105,9 @@ class BookmarkCog(commands.Cog):
         if not storage_vc_id and interaction.guild:
             load_channel_ids(interaction.guild)
 
+        # 💡 【完全修正】Hong という謎の文字を取り除き、文法エラーを直しました
         if not storage_vc_id:
-            await interaction.followup.send("❌ セットアップが完了していません。", Hong ephemeral=True)
+            await interaction.followup.send("❌ セットアップが完了していません。", ephemeral=True)
             return
 
         success = await delete_category_logs(self.bot, storage_vc_id, interaction.user.id, name)
@@ -205,7 +205,6 @@ class BookmarkCog(commands.Cog):
                             u_id_text = line.replace("👤USER:", "").strip()
                             
                     if f_name and u_id_text and int(u_id_text) == user_id:
-                        # 💡 過去の壊れたデータ形式を自動でお掃除して追加
                         f_name = clean_folder_name(f_name)
                         if f_name not in folders and f_name not in deleted_folders:
                             folders.append(f_name)
