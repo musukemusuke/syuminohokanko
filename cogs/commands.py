@@ -4,7 +4,6 @@ from discord import app_commands
 from discord.ext import commands
 
 from utils import build_archive_embed, search_archive_data, delete_category_logs
-from views import CategorySelectView
 
 # グローバル変数・キャッシュ
 post_id, archive_id, storage_vc_id = None, None, None
@@ -96,7 +95,6 @@ class CommandsCog(commands.Cog):
             load_channel_ids(guild)
         await sync_all_cached_folders(self.bot)
 
-    # 💡 【完全自分専用仕様】URLを最初から誰にも見られずにフォルダへ格納する新しいコマンド
     @app_commands.command(name="archive_add", description="【自分専用表示】URLを指定したフォルダへ安全に格納します")
     @app_commands.describe(url="保存したいウェブサイトや動画のURL")
     async def archive_add(self, interaction: discord.Interaction, url: str):
@@ -113,7 +111,7 @@ class CommandsCog(commands.Cog):
                 await interaction.response.send_message("💡 まだ仕分けフォルダがありません。まずは `/category_add` で作成してください。", ephemeral=True)
                 return
 
-        # 💡 スラッシュコマンド起点なので、最初から100%確実に自分だけにしか見えないセレクトメニューが出せます！
+        from views import CategorySelectView
         view = CategorySelectView(reversed(folders), [url], post_id, storage_vc_id)
         embed = discord.Embed(
             title="📥 URLの保管先を選択",
@@ -125,8 +123,10 @@ class CommandsCog(commands.Cog):
         if interaction.guild:
             self.bot.loop.create_task(self.update_archive_channel_embed(interaction.guild, interaction.user.id, interaction.user.display_name))
 
+    # 💡 【機能拡張】name に加えて url 引数を追加（URLは任意入力、入れなくても動くように default=None）
     @app_commands.command(name="category_add", description="新しくデータを仕分けるフォルダカテゴリーを追加します")
-    async def category_add(self, interaction: discord.Interaction, name: str):
+    @app_commands.describe(name="追加するフォルダ名", url="フォルダのトップに紐付けたい代表URL（任意）")
+    async def category_add(self, interaction: discord.Interaction, name: str, url: str = None):
         global storage_vc_id
         if not storage_vc_id and interaction.guild: load_channel_ids(interaction.guild)
         storage_vc = self.bot.get_channel(storage_vc_id)
@@ -134,10 +134,19 @@ class CommandsCog(commands.Cog):
             await interaction.response.send_message("❌ まだ `/setup` が完了していないか、金庫が見つかりません。", ephemeral=True)
             return
             
-        await storage_vc.send(f"🆕NEW_FOLDER:{name}\n👤USER:{interaction.user.id}")
+        # 金庫へ送るログに URL 情報も追加
+        log_msg = f"🆕NEW_FOLDER:{name}\n👤USER:{interaction.user.id}"
+        if url:
+            log_msg += f"\n🔗LINK:{url}"
+            
+        await storage_vc.send(log_msg)
         await sync_all_cached_folders(self.bot)
         
-        embed = discord.Embed(description=f"📂 フォルダ 「**{name}**」 を新規作成しました！", color=0xd4af37)
+        desc = f"📂 フォルダ 「**{name}**」 を新規作成しました！"
+        if url:
+            desc += f"\n🔗 代表リンク: {url}"
+            
+        embed = discord.Embed(description=desc, color=0xd4af37)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="category_delete", description="作成したフォルダカテゴリーを中身ごと完全に削除します")
