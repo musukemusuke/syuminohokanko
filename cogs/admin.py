@@ -7,6 +7,18 @@ class AdminCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # 💡 起動時に最新の管理者コマンド（/setupなど）をDiscordへ強制反映させます
+    @commands.Cog.listener()
+    async def on_ready(self):
+        for guild in self.bot.guilds:
+            try:
+                # このサーバーに最新の管理者コマンドをコピーして同期（即時反映）
+                self.bot.tree.copy_global_to(guild=guild)
+                await self.bot.tree.sync(guild=guild)
+                print(f"[{guild.name}] へ管理者コマンドを同期しました！")
+            except Exception as e:
+                print(f"[{guild.name}] 管理者コマンド同期エラー: {e}")
+
     @app_commands.command(
         name="setup",
         description="【管理者専用】ブックマーク用のカテゴリーとチャンネルを生成します",
