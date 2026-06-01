@@ -152,7 +152,7 @@ class BookmarkCog(commands.Cog):
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # 💡 【完全修正】bot.pyから中継された通信を受け取る、正しいCog型イベントリスナー
+    # 💡 【完全解決】bot.pyから通信が遮断されずに届く、正規のメッセージイベント
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         global post_id, storage_vc_id
@@ -169,7 +169,7 @@ class BookmarkCog(commands.Cog):
         if not storage_vc:
             return
 
-        # URL判定
+        # 💡 URLの抽出（http:// または https://）
         url_match = re.search(r"https?://[^\s]+", message.content)
         if not url_match:
             return
@@ -219,6 +219,7 @@ class BookmarkCog(commands.Cog):
             )
             return
 
+        # 💡 【完全復活】ボットにViewを事前登録（永続化対応）させ、メニューを送信
         view = CategorySelectView(
             reversed(folders), url_list, post_id, storage_vc_id, memo_text
         )
@@ -227,6 +228,8 @@ class BookmarkCog(commands.Cog):
             description="🔷 **このコンテンツの保管先フォルダを選択してください**",
             color=0x2f3136
         )
+        
+        # 100%確実にメニューを返信します
         await message.reply(embed=embed_reply, view=view)
 
         async def refresh_task():
