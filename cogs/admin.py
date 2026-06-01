@@ -60,7 +60,7 @@ class AdminCog(commands.Cog):
                     name="🤫・データ金庫", category=cat, overwrites=overwrites
                 )
 
-            # 別ファイルからでもIDを認識できるよう、ロード処理を一度叩く
+            # 別ファイルから同期処理を叩く
             from cogs.bookmark import load_channel_ids
             load_channel_ids(guild)
 
@@ -77,6 +77,5 @@ class AdminCog(commands.Cog):
             traceback.print_exc()
             await interaction.followup.send(f"❌ セットアップ中にエラーが発生しました: {e}", ephemeral=True)
 
-# ボットにこの追加モジュールを登録する関数
 async def setup(bot):
     await bot.add_cog(AdminCog(bot))
