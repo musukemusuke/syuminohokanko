@@ -1,57 +1,55 @@
 import discord
-from views import ArchiveViewButton
 
-async def build_archive_embed(bot, vc_id, user_id, display_name):
-    storage_vc = bot.get_channel(vc_id)
-    if not storage_vc: return None
+class CategorySelect(discord.ui.Select):
+    def __init__(self, categories, message, post_id, vc_id):
+        self.orig_msg = message
+        self.post_id = post_id
+        self.vc_id = vc_id
+        options = [
+            discord.SelectOption(label=cat, description=f"「{cat}」に保存")
+            for cat in categories
+        ]
+        super().__init__(placeholder="フォルダを選択...", min_values=1, max_values=1, options=options)
 
-    folders, archive_data = [], {}
-    async for msg in storage_vc.history(limit=1000):
-        content = msg.content
-        if content.startswith("🆕NEW_FOLDER:"):
-            try:
-                lines = content.split("\n")
-                f_name = lines[0].replace("🆕NEW_FOLDER:", "").strip()
-                u_id = int(lines[1].replace("👤USER:", "").strip())
-                if u_id == user_id and f_name not in folders:
-                    folders.append(f_name)
-                    archive_data[f_name] = []
-            except: continue
-        elif content.startswith("📁FOLDER:"):
-            try:
-                lines = content.split("\n")
-                f_name = lines[0].replace("📁FOLDER:", "").strip()
-                u_id = int(lines[1].replace("👤USER:", "").strip())
-                data_url = lines[2].replace("🔗DATA:", "").strip()
-                if u_id == user_id:
-                    if f_name not in archive_data: archive_data[f_name] = []
-                    if data_url not in archive_data[f_name]: archive_data[f_name].append(data_url)
-            except: continue
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        storage_vc = interaction.client.get_channel(self.vc_id)
+        if not storage_vc: return
 
-    if not folders: return None
-    embed = discord.Embed(title=f"📚 {display_name} の一覧", description="クリックで再生・閲覧可能。\n（元のチャットが消されても100%見られます）", color=discord.Color.blue())
-    for folder in reversed(folders):
-        items = archive_data.get(folder, [])
-        item_list = "\n".join([f"• [データを見る]({item})" for item in items]) if items else "*（データなし）*"
-        embed.add_field(name=f"📁 {folder}", value=item_list, inline=False)
-    return embed
-
-async def check_and_restore_messages(bot, post_id, archive_id, build_embed_func):
-    ch_post, ch_archive = bot.get_channel(post_id), bot.get_channel(archive_id)
-    if ch_post:
-        has_intro = False
-        async for msg in ch_post.history(limit=20):
-            if msg.author == bot.user and "ブックマークボットへようこそ" in msg.content:
-                has_intro = True
+        saved_url = ""
+        if self.orig_msg.attachments:
+            for attachment in self.orig_msg.attachments:
+                file_data = await attachment.to_file()
+                backup_msg = await storage_vc.send(content="📦 BACKUP", file=file_data)
+                saved_url = backup_msg.attachments.url
                 break
-        if not has_intro:
-            await ch_post.send("📌 **ブックマークボットへようこそ！**\n1. `/category_add` でフォルダを作ります。\n2. ここにURLや画像を貼ると仕分けメニューが出現します！")
+        else:
+            for word in self.orig_msg.content.split():
+                if word.startswith("http"):
+                    backup_msg = await storage_vc.send(content=f"🔗 {word}")
+                    saved_url = word
+                    break
 
-    if ch_archive:
-        has_button = False
-        async for msg in ch_archive.history(limit=20):
-            if msg.author == bot.user and msg.components:
-                has_button = True
-                break
-        if not has_button:
-            await ch_archive.send("ボタンを押すと、あなたが保存したデータ一覧を表示します。", view=ArchiveViewButton(build_embed_func))
+        if saved_url:
+            log_text = f"📁FOLDER:{self.values}\n👤USER:{interaction.user.id}\n🔗DATA:{saved_url}"
+            await storage_vc.send(log_text)
+            await interaction.followup.send(f"✅ **{self.values}** に保存しました！", ephemeral=True)
+
+class CategorySelectView(discord.ui.View):
+    def __init__(self, categories, message, post_id, vc_id):
+        super().__init__(timeout=60)
+        self.add_item(CategorySelect(categories, message, post_id, vc_id))
+
+class ArchiveViewButton(discord.ui.View):
+    def __init__(self, build_embed_func):
+        super().__init__(timeout=None)
+        self.build_embed_func = build_embed_func
+
+    @discord.ui.button(label="自分のブックマークを見る", style=discord.ButtonStyle.primary, custom_id="view_my_archive", emoji="📚")
+    async def view_archive(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        embed = await self.build_embed_func(interaction.user.id, interaction.user.display_name)
+        if embed is None:
+            await interaction.followup.send("📭 まだ仕分けフォルダがありません。最初に `/category_add` で作ってください。", ephemeral=True)
+        else:
+            await interaction.followup.send(embed=embed, ephemeral=True)
