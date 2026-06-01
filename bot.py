@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -12,14 +13,11 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
-# グローバル変数の定義
 post_id, archive_id, storage_vc_id = None, None, None
 
 
 async def my_embed_factory(user_id, display_name):
-    # storage_vc_id が None の場合は処理をスキップ
     if not storage_vc_id:
-        print("[WARNING] 金庫チャンネルのIDが設定されていません。")
         return None
     return await build_archive_embed(
         bot, storage_vc_id, user_id, display_name
@@ -44,7 +42,7 @@ async def update_archive_channel_embed(guild, user_id, display_name):
             break
 
 
-# 💡 【重要】起動時やコマンド実行時にチャンネルIDを自動的に復元する安全な関数
+# 再起動時にもチャンネルが外れないように、チャンネルIDを読み直す処理
 def load_channel_ids(guild: discord.Guild):
     global post_id, archive_id, storage_vc_id
     cat = discord.utils.get(guild.categories, name="📁 ブックマーク")
@@ -139,8 +137,7 @@ async def setup_channels(interaction: discord.Interaction):
 @app_commands.describe(name="追加するフォルダ名（例：動画、イラスト、ゲームなど）")
 async def category_add(interaction: discord.Interaction, name: str):
     global storage_vc_id
-    # 再起動対策：IDが空なら自動復元を試みる
-    if not storage_vc_id:
+    if not storage_vc_id and interaction.guild:
         load_channel_ids(interaction.guild)
 
     storage_vc = bot.get_channel(storage_vc_id)
@@ -162,8 +159,7 @@ async def category_add(interaction: discord.Interaction, name: str):
 async def archive_view(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     global storage_vc_id
-    # 再起動対策：IDが空なら自動復元を試みる
-    if not storage_vc_id:
+    if not storage_vc_id and interaction.guild:
         load_channel_ids(interaction.guild)
 
     embed = await my_embed_factory(
@@ -184,42 +180,45 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    # 再起動対策：IDが空なら自動復元を試みる
     if message.guild and (not post_id or not storage_vc_id):
         load_channel_ids(message.guild)
 
     if message.channel.id != post_id:
         return
 
-    has_content = bool(message.attachments) or (
-        "http://" in message.content or "https://" in message.content
-    )
-    if has_content:
+    # メッセージ本文からhttp(s)から始まるURLを探す
+    url_match = re.search(r"https?://[^\s]+", message.content)
+    
+    # URLが本文にある、もしくは添付ファイルがある場合のみ処理
+    if url_match or message.attachments:
         storage_vc = bot.get_channel(storage_vc_id)
         if not storage_vc:
             return
 
+        # 💡 本文のURLを最優先し、本文になければ1つ目の画像のURLを取得する
+        if url_match:
+            original_url = url_match.group(0)
+        else:
+            original_url = message.attachments[0].url
+
         user_id = message.author.id
         folders = []
-        
-        # 💡 on_message内の文字列解析部分を、エラーの起きない安全なループ処理に完全置換
         async for msg in storage_vc.history(limit=1000):
             if msg.content.startswith("🆕NEW_FOLDER:"):
                 try:
                     lines = msg.content.split("\n")
                     f_name, u_id_text = None, None
-                    
                     for line in lines:
                         if line.startswith("🆕NEW_FOLDER:"):
                             f_name = line.replace("🆕NEW_FOLDER:", "").strip()
                         elif line.startswith("👤USER:"):
                             u_id_text = line.replace("👤USER:", "").strip()
-                            
+
                     if f_name and u_id_text:
-                        if int(u_id_text) == user_id and f_name not in folders:
-                            folders.append(f_name)
-                except Exception as e:
-                    print(f"[DEBUG] on_message 解析エラー無視: {e}")
+                        if int(u_id_text) == user_id:
+                            if f_name not in folders:
+                                folders.append(f_name)
+                except:
                     continue
 
         if not folders:
@@ -228,8 +227,9 @@ async def on_message(message: discord.Message):
             )
             return
 
+        # 💡 message.id の代わりに、取得したオリジナルのURLを直接Viewに渡します
         view = CategorySelectView(
-            reversed(folders), message.id, post_id, storage_vc_id
+            reversed(folders), original_url, post_id, storage_vc_id
         )
         await message.reply("どのフォルダにアーカイブしますか？", view=view)
 
@@ -252,7 +252,6 @@ async def on_ready():
     print(f"ログインしました: {bot.user.name}")
     await bot.tree.sync()
     
-    # ボット起動時、参加しているサーバーのチャンネルIDを自動的にバックアップから復元する
     for guild in bot.guilds:
         if load_channel_ids(guild):
             print(f"[{guild.name}] のチャンネル設定を自動的に復元しました。")
