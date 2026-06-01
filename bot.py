@@ -14,7 +14,7 @@ async def on_ready():
 
 async def main():
     async with bot:
-        # 正しいファイルを順番にロード
+        # 💡 正しいCogsファイルのみを厳密にロードします
         cogs_to_load = ["cogs.admin", "cogs.commands", "cogs.listener"]
         for cog in cogs_to_load:
             try:
@@ -24,8 +24,8 @@ async def main():
                 print(f"❌ クラス {cog} のロードに失敗しました:")
                 traceback.print_exc()
 
-        # 💡 【完全上書き同期】すべてのファイルを読み込み終わった「後」に、
-        # 確実に Discord サーバーへ最新のコマンド定義（name/url必須仕様）を一括で強制登録します。
+        # 💡 【完全治療】ルート直書きの古い定義が消えたクリーンな状態で、
+        # cogs.commands 側にある最新の name / url 必須コマンドを強制上書き同期します
         try:
             print("🔄 スラッシュコマンド（name/url必須仕様）をDiscordへ完全同期中...")
             await bot.tree.sync()
