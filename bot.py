@@ -14,7 +14,7 @@ async def on_ready():
 
 async def main():
     async with bot:
-        # 1. 2つの拡張ファイルをボットに読み込ませる
+        # Cogsファイルをボットにロード
         cogs_to_load = ["cogs.admin", "cogs.bookmark"]
         for cog in cogs_to_load:
             try:
@@ -24,8 +24,7 @@ async def main():
                 print(f"❌ クラス {cog} のロードに失敗しました:")
                 traceback.print_exc()
 
-        # 💡 【重要修正】すべてのファイルを読み込み終わった「後」に、
-        # まとめてDiscord側へスラッシュコマンドを完全同期（一括登録）します。
+        # すべてのCogsを読み込み終わった後に、一括でDiscord側とスラッシュコマンドを同期
         try:
             print("🔄 スラッシュコマンドをDiscordと同期中...")
             await bot.tree.sync()
