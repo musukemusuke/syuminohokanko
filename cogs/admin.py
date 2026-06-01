@@ -10,32 +10,43 @@ class AdminCog(commands.Cog):
     @app_commands.command(name="setup", description="【管理者専用】ブックマークシステムの初期設定を行います")
     @app_commands.checks.has_permissions(administrator=True)
     async def setup_channels(self, interaction: discord.Interaction):
-        # ...（前回の改善版をそのまま使用。変更なしでも可）
-        # 省略（必要なら言ってください）
         await interaction.response.defer(ephemeral=True)
-        # 既存のsetup処理...
+        
+        # 既存のsetup処理（チャンネル作成など）をここに記述
+        
+        # チャンネルIDを他Cogに通知（※永続化の実装を推奨）
         commands_cog = self.bot.get_cog("CommandsCog")
         if commands_cog and hasattr(commands_cog, "load_channel_ids"):
             commands_cog.load_channel_ids(interaction.guild)
+            
+        await interaction.followup.send("✅ 初期設定が完了しました。", ephemeral=True)
 
 
     @app_commands.command(name="sync", description="【管理者専用】スラッシュコマンドを強制同期します")
     @app_commands.checks.has_permissions(administrator=True)
     async def sync_commands(self, interaction: discord.Interaction):
+        # 1. 応答を保留にする（これによって「ボットが考え中...」の状態になる）
         await interaction.response.defer(ephemeral=True)
-        
-        success = await self.bot.get_cog("AdminCog").bot.get_command("sync_all_commands")  # 待機中
-        # 実際は main.py の関数を呼ぶより、直接同期処理をここに書くのがシンプル
 
         try:
-            await interaction.followup.send("🔄 同期中...", ephemeral=True)
+            # 2. 保留していた応答の最初のメッセージ（親メッセージ）を送信する
+            msg = await interaction.followup.send("🔄 コマンド同期を実行中...（数秒かかります）", ephemeral=True)
+            
             bot = interaction.client
+            # グローバルに登録されているスラッシュコマンドを、現在のサーバーに複製して即時反映させる
             bot.tree.copy_global_to(guild=interaction.guild)
             await bot.tree.sync(guild=interaction.guild)
-            await interaction.followup.send("✅ このサーバーのコマンドを強制同期しました。", ephemeral=True)
+            
+            # 3. 送信したメッセージの内容を「完了」に書き換える（edit_messageを使用）
+            await interaction.followup.edit_message(
+                message_id=msg.id, 
+                content="✅ このサーバーに対するスラッシュコマンドの強制同期が完了しました！"
+            )
+            
         except Exception as e:
             traceback.print_exc()
-            await interaction.followup.send(f"❌ 同期失敗: {e}", ephemeral=True)
+            # エラー時もメッセージを書き換えてユーザーに通知する
+            await interaction.followup.send(f"❌ 同期中にエラーが発生しました: {e}", ephemeral=True)
 
 
 async def setup(bot):
