@@ -1,5 +1,5 @@
 import discord
-
+import traceback
 
 class CategorySelect(discord.ui.Select):
 
@@ -21,21 +21,38 @@ class CategorySelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        # 1. タイムアウトを防ぐため即座に応答を返す
         await interaction.response.defer(ephemeral=True)
-        storage_vc = interaction.client.get_channel(self.vc_id)
-        if not storage_vc:
-            return
+        
+        try:
+            storage_vc = interaction.client.get_channel(self.vc_id)
+            if not storage_vc:
+                await interaction.followup.send("❌ データ金庫チャンネルが見つかりません。再セットアップしてください。", ephemeral=True)
+                return
 
-        selected_folder = self.values
-        archive_link = f"https://discord.com{interaction.guild_id}/{self.post_id}/{self.message_id}"
+            # ★【修正完了】self.valuesはリストなので、[0]で選択された文字列を直接取得
+            selected_folder = self.values[0]
+            
+            # ★【修正完了】Discordの正しいメッセージURLフォーマット（/channels/を挿入）に修正
+            archive_link = f"https://discord.com{interaction.guild_id}/{self.post_id}/{self.message_id}"
 
-        await storage_vc.send(
-            f"📁FOLDER:{selected_folder}\n👤USER:{interaction.user.id}\n🔗LINK:{archive_link}"
-        )
-        await interaction.followup.send(
-            f"✅ **{selected_folder}** フォルダに登録しました！",
-            ephemeral=True,
-        )
+            # 金庫VCにデータを送信
+            await storage_vc.send(
+                f"📁FOLDER:{selected_folder}\n"
+                f"👤USER:{interaction.user.id}\n"
+                f"🔗LINK:{archive_link}"
+            )
+            
+            await interaction.followup.send(
+                f"✅ **{selected_folder}** フォルダに登録しました！",
+                ephemeral=True,
+            )
+            print(f"[SUCCESS] ユーザー {interaction.user.name} が '{selected_folder}' に保存しました。")
+
+        except Exception as e:
+            print("[CRITICAL ERROR] セレクトメニュー処理中にエラーが発生しました:")
+            traceback.print_exc()
+            await interaction.followup.send(f"❌ 保存処理中にエラーが発生しました: {e}", ephemeral=True)
 
 
 class CategorySelectView(discord.ui.View):
