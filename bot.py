@@ -3,6 +3,7 @@ import os
 import discord
 from discord import app_commands
 from discord.ext import commands
+import traceback  # エラー表示用に追加
 
 from utils import build_archive_embed
 from views import CategorySelectView
@@ -46,57 +47,67 @@ async def setup_channels(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
 
-    cat_name = "📁 ブックマーク"
-    cat = discord.utils.get(guild.categories, name=cat_name) or (
-        await guild.create_category(name=cat_name)
-    )
-
-    # ★【完全修正】お相手が最初に迷わないよう、/category_add の案内をトピックに明記
-    post_topic = (
-        "まずは `/category_add` コマンドで仕分けフォルダを作ってください。"
-        "その後、ここに動画や画像のURLを貼ると自動仕分けが始まります。"
-    )
-    ch_post = discord.utils.get(
-        cat.text_channels, name="📥・ブックマーク"
-    ) or (
-        await guild.create_text_channel(
-            name="📥・ブックマーク", category=cat, topic=post_post
-        )
-    )
-
-    topic_text = (
-        "`/archive_view` コマンドで、これまでに"
-        "集めたデータ一覧をここに表示できます。"
-    )
-    ch_arc = discord.utils.get(
-        cat.text_channels, name="📚・アーカイブ"
-    ) or (
-        await guild.create_text_channel(
-            name="📚・アーカイブ", category=cat, topic=topic_text
-        )
-    )
-
-    ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
-
-    # 全人類非表示の金庫VCを生成
-    if not ch_vc:
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(
-                view_channel=False, connect=False
-            ),
-            guild.me: discord.PermissionOverwrite(
-                view_channel=True, connect=True, send_messages=True
-            ),
-        }
-        ch_vc = await guild.create_voice_channel(
-            name="🤫・データ金庫", category=cat, overwrites=overwrites
+    try:
+        cat_name = "📁 ブックマーク"
+        cat = discord.utils.get(guild.categories, name=cat_name) or (
+            await guild.create_category(name=cat_name)
         )
 
-    post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
+        # ★【修正完了】変数のタイポを post_topic に修正
+        post_topic = (
+            "まずは `/category_add` コマンドで仕分けフォルダを作ってください。\n"
+            "その後、ここに動画や画像のURLを貼ると自動仕分けが始まります。"
+        )
+        ch_post = discord.utils.get(
+            cat.text_channels, name="📥・ブックマーク"
+        ) or (
+            await guild.create_text_channel(
+                name="📥・ブックマーク", category=cat, topic=post_topic
+            )
+        )
 
-    await interaction.followup.send(
-        "✅ チャンネルと秘密金庫の生成が完了しました！", ephemeral=True
-    )
+        topic_text = (
+            "`/archive_view` コマンドで、これまでに"
+            "集めたデータ一覧をここに表示できます。"
+        )
+        ch_arc = discord.utils.get(
+            cat.text_channels, name="📚・アーカイブ"
+        ) or (
+            await guild.create_text_channel(
+                name="📚・アーカイブ", category=cat, topic=topic_text
+            )
+        )
+
+        ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
+
+        # 全人類非表示の金庫VCを生成
+        if not ch_vc:
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(
+                    view_channel=False, connect=False
+                ),
+                guild.me: discord.PermissionOverwrite(
+                    view_channel=True, connect=True, send_messages=True
+                ),
+            }
+            ch_vc = await guild.create_voice_channel(
+                name="🤫・データ金庫", category=cat, overwrites=overwrites
+            )
+
+        post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
+
+        await interaction.followup.send(
+            "✅ チャンネルと秘密金庫の生成が完了しました！", ephemeral=True
+        )
+        print("[SUCCESS] 全てのチャンネル・VCの生成/取得に成功しました。")
+
+    except discord.Forbidden:
+        print("[ERROR] ボットの権限（チャンネル管理など）が不足しています。")
+        await interaction.followup.send("❌ 権限不足によりチャンネルの作成に失敗しました。", ephemeral=True)
+    except Exception as e:
+        print("[CRITICAL ERROR] setupコマンド実行中にエラーが発生しました:")
+        traceback.print_exc()
+        await interaction.followup.send(f"❌ セットアップ中に予期せぬエラーが発生しました: {e}", ephemeral=True)
 
 
 @bot.tree.command(
@@ -106,6 +117,10 @@ async def setup_channels(interaction: discord.Interaction):
 @app_commands.describe(name="追加するフォルダ名（例：動画、イラスト、ゲームなど）")
 async def category_add(interaction: discord.Interaction, name: str):
     storage_vc = bot.get_channel(storage_vc_id)
+    if not storage_vc:
+        await interaction.response.send_message("❌ まだ `/setup` が完了していないか、金庫が見つかりません。", ephemeral=True)
+        return
+        
     await storage_vc.send(
         f"🆕NEW_FOLDER:{name}\n" f"👤USER:{interaction.user.id}"
     )
@@ -141,16 +156,20 @@ async def on_message(message: discord.Message):
     )
     if has_content:
         storage_vc = bot.get_channel(storage_vc_id)
+        if not storage_vc:
+            return
+
         user_id = message.author.id
         folders = []
         async for msg in storage_vc.history(limit=1000):
             if msg.content.startswith("🆕NEW_FOLDER:"):
                 try:
                     lines = msg.content.split("\n")
-                    u_id_text = lines.replace("👤USER:", "").strip()
+                    # 💡 安全に抽出できるように処理を整理
+                    u_id_text = lines[1].replace("👤USER:", "").strip()
                     if int(u_id_text) == user_id:
                         f_name = (
-                            lines.replace("🆕NEW_FOLDER:", "").strip()
+                            lines[0].replace("🆕NEW_FOLDER:", "").strip()
                         )
                         if f_name not in folders:
                             folders.append(f_name)
@@ -190,12 +209,13 @@ async def on_ready():
 
 async def main():
     async with bot:
-        bot.loop.create_task(asyncio.sleep(9900))
+        # ★【修正】謎の長時間 sleep タスクを削除
         await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except:
-        pass
+    except Exception as e:
+        # ★【修正】エラーを揉み消さずコンソールに出力する
+        traceback.print_exc()
