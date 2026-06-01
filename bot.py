@@ -51,6 +51,7 @@ async def setup_channels(interaction: discord.Interaction):
         await guild.create_category(name=cat_name)
     )
 
+    # トピック説明文付きで部屋を生成
     ch_post = discord.utils.get(
         cat.text_channels, name="📥・ブックマーク"
     ) or (
@@ -75,6 +76,7 @@ async def setup_channels(interaction: discord.Interaction):
 
     ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
 
+    # 全人類非表示の金庫VCを生成
     if not ch_vc:
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(
@@ -90,13 +92,7 @@ async def setup_channels(interaction: discord.Interaction):
 
     post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
 
-    # 不要なボタン送信を完全に廃止し、最初のメッセージだけをスッキリ投稿
-    await ch_arc.send(
-        "📚 **趣味のアーカイブ図書室へようこそ！**\n"
-        "チャット欄に `/archive_view` と入力すると、"
-        "あなたが保存した趣味のデータ一覧を"
-        "本人にだけ見える非公開画面でいつでも確認できます。"
-    )
+    # ★ チャットへの不要なテキスト送信をすべて無くしました（100%クリーン化）
     await interaction.followup.send(
         "✅ チャンネルと秘密金庫の生成が完了しました！", ephemeral=True
     )
@@ -150,10 +146,10 @@ async def on_message(message: discord.Message):
             if msg.content.startswith("🆕NEW_FOLDER:"):
                 try:
                     lines = msg.content.split("\n")
-                    u_id_text = lines[1].replace("👤USER:", "").strip()
+                    u_id_text = lines.replace("👤USER:", "").strip()
                     if int(u_id_text) == user_id:
                         f_name = (
-                            lines[0].replace("🆕NEW_FOLDER:", "").strip()
+                            lines.replace("🆕NEW_FOLDER:", "").strip()
                         )
                         if f_name not in folders:
                             folders.append(f_name)
