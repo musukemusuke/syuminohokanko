@@ -10,7 +10,7 @@ from views import CategorySelectView
 # チャンネル管理用のグローバルID
 post_id, archive_id, storage_vc_id = None, None, None
 
-# フォルダ名をメモリに保存し、URL貼り付け時のフリーズを完全に防止するキャッシュ
+# フォルダ名をメモリにキャッシュする仕組み
 cached_folders = {} # {user_id: [folder_names]}
 
 def load_channel_ids(guild: discord.Guild):
@@ -55,6 +55,7 @@ class BookmarkCog(commands.Cog):
                 print(f"[{guild.name}] アーカイブ画面を自動更新しました。")
                 break
 
+    # キャッシュ同期用関数
     async def sync_user_folders(self, user_id):
         global storage_vc_id
         storage_vc = self.bot.get_channel(storage_vc_id)
@@ -140,7 +141,7 @@ class BookmarkCog(commands.Cog):
             load_channel_ids(interaction.guild)
 
         if not storage_vc_id:
-            await interaction.followup.send("❌ セットアップが完了していません。", Hong ephemeral=True)
+            await interaction.followup.send("❌ セットアップが完了していません。", ephemeral=True)
             return
 
         success = await delete_category_logs(self.bot, storage_vc_id, interaction.user.id, name)
@@ -189,6 +190,7 @@ class BookmarkCog(commands.Cog):
         if not storage_vc_id and interaction.guild:
             load_channel_ids(interaction.guild)
 
+        # 💡 【タイポ修正】Hong を削除し、正しい記述に直しました
         if not storage_vc_id:
             await interaction.followup.send("❌ セットアップが完了していません。", ephemeral=True)
             return
@@ -214,31 +216,21 @@ class BookmarkCog(commands.Cog):
         if not storage_vc:
             return
 
-        # 💡 【完全復活＆万能化ロジック】
-        # 以前動いていた時の仕様を完璧にベースにし、URLや画像を確実に1つ抽出します
-        url_match = re.search(r"https?://[^\s]+", message.content)
-        memo_text = message.content.strip() if message.content.strip() else ""
         url_list = []
+        memo_text = message.content.strip()
 
-        if url_match:
-            # 本文にYouTubeなどのURLがあれば、そのURL単体をそのまま最優先で1つ回収
-            url_list.append(url_match.group(0))
-        elif message.attachments:
-            # 本文にURLがなく、画像が貼られているなら画像のURLを回収（複数枚ならすべて回収）
+        if message.attachments:
             for attachment in message.attachments:
                 url_list.append(attachment.url)
         else:
-            # リンクも画像もない、純粋なテキストメモならその文字そのものを保存
             if memo_text:
                 url_list.append(memo_text)
 
-        # 何も中身が検出できなければ安全に終了
         if not url_list:
             return
 
         user_id = message.author.id
         
-        # メモリからフォルダ一覧を爆速で取得（URL貼り付け時の詰まり・フリーズを完全に防止）
         if user_id not in cached_folders or not cached_folders[user_id]:
             folders = await self.sync_user_folders(user_id)
         else:
@@ -250,7 +242,6 @@ class BookmarkCog(commands.Cog):
             )
             return
 
-        # 前回の形式に合わせて綺麗にデータをViewに渡します
         view = CategorySelectView(
             reversed(folders), url_list, post_id, storage_vc_id, memo_text
         )
@@ -264,4 +255,8 @@ class BookmarkCog(commands.Cog):
         async def refresh_task():
             await asyncio.sleep(2)
             await self.update_archive_channel_embed(message.guild, message.author.id, message.author.display_name)
-            self.bot.loop.create_task(refresh_task())async def setup(bot):await bot.add_cog(BookmarkCog(bot))
+            
+        self.bot.loop.create_task(refresh_task())
+
+async def setup(bot):
+    await bot.add_cog(BookmarkCog(bot))
