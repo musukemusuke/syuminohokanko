@@ -27,29 +27,28 @@ class AdminCog(commands.Cog):
                 category = await guild.create_category(name=category_name)
                 print(f"✅ カテゴリを作成しました: {category_name}")
 
-            # 2. データ金庫用の権限（オーバライト）を設定
-            # @everyoneは閲覧不可、ボット自身は閲覧・送信可能にする
-            overwrites_storage = {
-                guild.default_role: discord.PermissionOverwrite(read_messages=False, send_messages=False),
-                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, read_message_history=True)
-            }
+            # 2. 生成するチャンネルの名前リスト（一旦オーバライトなしで作成）
+            channels_to_create = ["📥・ブックマーク", "📚・アーカイブ", "🤫・データ金庫"]
 
-            # 3. 各種テキストチャンネルの生成（存在しない場合のみ作成）
-            channels_to_create = [
-                {"name": "📥・ブックマーク", "overwrites": None},
-                {"name": "📚・アーカイブ", "overwrites": None},
-                {"name": "🤫・データ金庫", "overwrites": overwrites_storage} # ここを修正した辞書に指定
-            ]
-
-            for ch_info in channels_to_create:
-                existing_ch = discord.utils.get(category.text_channels, name=ch_info["name"])
+            created_channels = {}
+            for ch_name in channels_to_create:
+                existing_ch = discord.utils.get(category.text_channels, name=ch_name)
                 if not existing_ch:
-                    await guild.create_text_channel(
-                        name=ch_info["name"],
-                        category=category,
-                        overwrites=ch_info["overwrites"]
-                    )
-                    print(f"✅ チャンネルを作成しました: {ch_info['name']}")
+                    new_ch = await guild.create_text_channel(name=ch_name, category=category)
+                    created_channels[ch_name] = new_ch
+                    print(f"✅ チャンネルを作成しました: {ch_name}")
+                else:
+                    created_channels[ch_name] = existing_ch
+
+            # 3. 【エラー対策の要】データ金庫の権限を安全に個別設定する
+            # create_text_channel の引数に辞書を渡すのをやめ、作成後に個別に権限を上書きします
+            storage_ch = created_channels.get("🤫・データ金庫")
+            if storage_ch:
+                # @everyone (全員) の閲覧権限を剥奪
+                await storage_ch.set_permissions(guild.default_role, read_messages=False, send_messages=False)
+                # ボット自身（自分）の閲覧・送信権限を確実に許可
+                await storage_ch.set_permissions(guild.me, read_messages=True, send_messages=True, read_message_history=True)
+                print("🔒 データ金庫の非公開化設定が完了しました。")
 
             # 4. CommandsCogへのチャンネルID再読み込み通知
             commands_cog = self.bot.get_cog("CommandsCog")
