@@ -11,12 +11,10 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
     deleted_folders = []
 
     try:
-        # 最新のメッセージから履歴を追う
         async for msg in storage_vc.history(limit=1000):
             content = msg.content
             lines = content.split("\n")
             
-            # 削除ログの先行回収
             if content.startswith("🗑️DELETE_FOLDER:"):
                 try:
                     f_name, u_id_text = None, None
@@ -77,14 +75,12 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
         traceback.print_exc()
         return None
 
-    # 有効なフォルダがなければ非表示
     folders = [f for f in folders if f not in deleted_folders]
     if not folders:
         return None
 
     embed = discord.Embed(
         title=f"⚜️ {display_name} | COLLECTION ARCHIVE",
-        description="保存されたデータカードです。リンクから直接コンテンツへアクセスできます。",
         color=0x2f3136
     )
     
@@ -95,19 +91,19 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
         for item in items:
             link, memo, timestamp = item
             
-            if "://discord.com" in link:
-                text = "📝 NOTE"
-            elif any(ext in link.lower() for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]):
-                text = "🖼️ IMAGE"
-            elif any(ext in link.lower() for ext in [".mp4", ".mov", ".mkv", ".webm"]):
-                text = "🎬 VIDEO"
+            # ドメインに応じて文字のラベルをスマートに切り替える
+            if "youtube.com" in link.lower() or "youtu.be" in link.lower():
+                text = "🎬 YOUTUBE VIDEO"
+            elif "x.com" in link.lower() or "twitter.com" in link.lower():
+                text = "🖼️ X (TWITTER)"
             else:
                 text = "🔗 LINK"
             
             time_display = f" ── <t:{timestamp}:R>" if timestamp else ""
-            memo_display = f" \n   └ *{memo[:20]}...*" if (memo and "ファイル合計" not in memo and len(memo) > 1) else ""
             
-            item_links.append(f"▪️ [{text}]({link}){time_display}{memo_display}")
+            # 💡 【完全修正】下の段のむき出しの長い生URL（\n └─ https://...）を完全に消去しました。
+            # 上の段の青くてスッキリしたハイパーリンクだけを格納します。
+            item_links.append(f"▪️ [{text}]({link}){time_display}")
             
         item_list = "\n".join(item_links) if item_links else "*（空のフォルダです）*"
         embed.add_field(name=f"📂 {folder}", value=item_list, inline=False)
@@ -115,7 +111,6 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
     return embed
 
 
-# 💡 【必須の関数】指定したキーワードで過去のアイテムを掘り起こすロジック
 async def search_archive_data(bot, vc_id, user_id, keyword):
     storage_vc = bot.get_channel(vc_id)
     embed = discord.Embed(
@@ -132,7 +127,6 @@ async def search_archive_data(bot, vc_id, user_id, keyword):
     deleted_folders = []
 
     try:
-        # 先に削除フォルダリストを精査
         async for msg in storage_vc.history(limit=1000):
             if msg.content.startswith("🗑️DELETE_FOLDER:"):
                 lines = msg.content.split("\n")
@@ -145,7 +139,6 @@ async def search_archive_data(bot, vc_id, user_id, keyword):
                 if f_name and u_id_text and int(u_id_text) == user_id:
                     deleted_folders.append(f_name)
 
-        # 検索データの抽出
         async for msg in storage_vc.history(limit=1000):
             content = msg.content
             if content.startswith("📁FOLDER:"):
@@ -168,9 +161,10 @@ async def search_archive_data(bot, vc_id, user_id, keyword):
                     if int(u_id_text) == user_id:
                         if (keyword.lower() in f_name.lower()) or (keyword.lower() in link.lower()) or (keyword.lower() in memo.lower()):
                             time_display = f"<t:{timestamp}:R>" if timestamp else "不明"
+                            # 💡 検索結果側からも下の生URLを消去し、青いリンクだけに統一
                             results_text.append(
                                 f"📂 **{f_name}** ({time_display})\n"
-                                f" └─ [対象を開く]({link}) " + (f"| *{memo}*" if memo else "")
+                                f" └─ [LINK]({link})"
                             )
                             found_count += 1
                             if found_count >= 15:
@@ -187,7 +181,6 @@ async def search_archive_data(bot, vc_id, user_id, keyword):
     return embed
 
 
-# 💡 【必須の関数】金庫にフォルダ削除のログを刻むための関数
 async def delete_category_logs(bot, vc_id, user_id, folder_name):
     storage_vc = bot.get_channel(vc_id)
     if not storage_vc:
