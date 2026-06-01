@@ -8,9 +8,9 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
     folders, archive_data = [], {}
     async for msg in storage_vc.history(limit=1000):
         content = msg.content
-        lines = content.split("\n")
         if content.startswith("🆕NEW_FOLDER:"):
             try:
+                lines = content.split("\n")
                 f_name = lines[0].replace("🆕NEW_FOLDER:", "").strip()
                 u_id = int(lines[1].replace("👤USER:", "").strip())
                 if u_id == user_id and f_name not in folders:
@@ -19,6 +19,7 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
             except: continue
         elif content.startswith("📁FOLDER:"):
             try:
+                lines = content.split("\n")
                 f_name = lines[0].replace("📁FOLDER:", "").strip()
                 u_id = int(lines[1].replace("👤USER:", "").strip())
                 data_url = lines[2].replace("🔗DATA:", "").strip()
@@ -28,7 +29,7 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
             except: continue
 
     if not folders: return None
-    embed = discord.Embed(title=f"📚 {display_name} の一覧", description="クリックで再生・閲覧可能。", color=discord.Color.blue())
+    embed = discord.Embed(title=f"📚 {display_name} の一覧", description="クリックで再生・閲覧可能。\n（元のチャットが消されても100%見られます）", color=discord.Color.blue())
     for folder in reversed(folders):
         items = archive_data.get(folder, [])
         item_list = "\n".join([f"• [データを見る]({item})" for item in items]) if items else "*（データなし）*"
@@ -40,11 +41,11 @@ async def check_and_restore_messages(bot, post_id, archive_id, build_embed_func)
     if ch_post:
         has_intro = False
         async for msg in ch_post.history(limit=20):
-            if msg.author == bot.user and "ボットへようこそ" in msg.content:
+            if msg.author == bot.user and "ブックマークボットへようこそ" in msg.content:
                 has_intro = True
                 break
         if not has_intro:
-            await ch_post.send("📌 **ボットへようこそ！**\n1. `/category_add` でフォルダを作ります。\n2. ここにURLや画像を貼ると仕分けメニューが出現します！")
+            await ch_post.send("📌 **ブックマークボットへようこそ！**\n1. `/category_add` でフォルダを作ります。\n2. ここにURLや画像を貼ると仕分けメニューが出現します！")
 
     if ch_archive:
         has_button = False
@@ -53,4 +54,4 @@ async def check_and_restore_messages(bot, post_id, archive_id, build_embed_func)
                 has_button = True
                 break
         if not has_button:
-            await ch_archive.send("ボタンを押すと、保存したデータ一覧を表示します。", view=ArchiveViewButton(build_embed_func))
+            await ch_archive.send("ボタンを押すと、あなたが保存したデータ一覧を表示します。", view=ArchiveViewButton(build_embed_func))
