@@ -5,7 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from utils import build_archive_embed
-from views import ArchiveViewButton, CategorySelectView
+from views import CategorySelectView
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -20,6 +20,7 @@ async def my_embed_factory(user_id, display_name):
     )
 
 
+# 仕分け完了時にアーカイブ画面を自動リフレッシュする処理
 async def update_archive_channel_embed(guild, user_id, display_name):
     ch_archive = bot.get_channel(archive_id)
     if not ch_archive:
@@ -89,9 +90,12 @@ async def setup_channels(interaction: discord.Interaction):
 
     post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
 
+    # 不要なボタン送信を完全に廃止し、最初のメッセージだけをスッキリ投稿
     await ch_arc.send(
-        "ボタンを押すと、あなたが保存したデータ一覧を表示します。",
-        view=ArchiveViewButton(my_embed_factory),
+        "📚 **趣味のアーカイブ図書室へようこそ！**\n"
+        "チャット欄に `/archive_view` と入力すると、"
+        "あなたが保存した趣味のデータ一覧を"
+        "本人にだけ見える非公開画面でいつでも確認できます。"
     )
     await interaction.followup.send(
         "✅ チャンネルと秘密金庫の生成が完了しました！", ephemeral=True
@@ -145,7 +149,6 @@ async def on_message(message: discord.Message):
         async for msg in storage_vc.history(limit=1000):
             if msg.content.startswith("🆕NEW_FOLDER:"):
                 try:
-                    # 配列指定のバグを完全に修正し、安全に読み込み
                     lines = msg.content.split("\n")
                     u_id_text = lines[1].replace("👤USER:", "").strip()
                     if int(u_id_text) == user_id:
