@@ -3,9 +3,11 @@ import os
 import discord
 from discord import app_commands
 from discord.ext import commands
+
+# 外部ファイルをそのままインポート
 from restore import check_and_restore_messages
 from utils import build_archive_embed
-from views import CategorySelectView
+from views import ArchiveViewButton, CategorySelectView
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -20,7 +22,6 @@ async def my_embed_factory(user_id, display_name):
     )
 
 
-# ★ `/setup` コマンドでバグを起こさず非表示VCを100%確実に生成する正しい命令
 @bot.tree.command(
     name="setup",
     description="【管理者専用】ブックマーク用のカテゴリーとチャンネルを生成します",
@@ -31,43 +32,54 @@ async def setup_channels(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
 
-    # 1. 本物のカテゴリー枠「📁 ブックマーク」を作成
-    cat_name = "📁 ブックマーク"
-    cat = discord.utils.get(guild.categories, name=cat_name) or (
-        await guild.create_category(name=cat_name)
+    cat = discord.utils.get(guild.categories, name="📁 ブックマーク") or (
+        await guild.create_category(name="📁 ブックマーク")
     )
 
-    # 2. テキストチャンネルを作成
     ch_post = discord.utils.get(
         cat.text_channels, name="📥・ブックマーク"
-    ) or (await guild.create_text_channel(name="📥・ブックマーク", category=cat))
-    ch_arc = discord.utils.get(cat.text_channels, name="📚・アーカイブ") or (
-        await guild.create_text_channel(name="📚・アーカイブ", category=cat)
+    ) or (
+        await guild.create_text_channel(
+            name="📥・ブックマーク",
+            category=cat,
+            topic="ここに動画や画像のURLを貼ると、ボットが自動で仕分けを案内します。",
+        )
     )
-
-    # 3. ★【完全非表示金庫】システムにブロックされずに、全人類からHideするVCを確実に生成
+    ch_arc = discord.utils.get(
+        cat.text_channels, name="📚・アーカイブ"
+    ) or (
+        await guild.create_text_channel(
+            name="📚・アーカイブ",
+            category=cat,
+            topic="`/archive_view` コマンドで、これまでに集めたデータ一覧をここに表示できます。",
+        )
+    )
     ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
+
     if not ch_vc:
         overwrites = {
-            # サーバーの基本ロール「@everyone」の閲覧と接続を完全に禁止にする
             guild.default_role: discord.PermissionOverwrite(
                 view_channel=False, connect=False
             ),
-            # ボット自身だけが見える・書ける設定にする
+            guild.owner: discord.PermissionOverwrite(
+                view_channel=False, connect=False
+            ),
             guild.me: discord.PermissionOverwrite(
                 view_channel=True, connect=True, send_messages=True
             ),
         }
-        # Discordの公式仕様に100%則ってVCを確実に作り出します
         ch_vc = await guild.create_voice_channel(
             name="🤫・データ金庫", category=cat, overwrites=overwrites
         )
 
-    # IDを正確に記憶
     post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
 
-    await check_and_restore_messages(
-        bot, post_id, archive_id, my_embed_factory
+    await ch_post.send(
+        "📌 **ブックマーク・アーカイブボットへようこそ！**\n1. まずは `/category_add` コマンドで、好きなフォルダを作ってください。\n2. その後、このチャンネルに動画URLや画像を貼り付けると、自動で仕分けメニューが出現します！"
+    )
+    await ch_arc.send(
+        "以下のボタンを押すと、あなたが保存した趣味のデータ一覧を本人にだけ見える形で表示します。",
+        view=ArchiveViewButton(my_embed_factory),
     )
     await interaction.followup.send(
         "✅ チャンネルと秘密金庫の生成が完了しました！", ephemeral=True
@@ -75,38 +87,42 @@ async def setup_channels(interaction: discord.Interaction):
 
 
 @bot.tree.command(
-    name="category_add", description="仕分けフォルダを追加します"
+    name="category_add",
+    description="新しくデータを仕分けるフォルダ（カテゴリー）を追加します",
 )
+@app_commands.describe(name="追加するフォルダ名（例：動画、イラスト、ゲームなど）")
 async def category_add(interaction: discord.Interaction, name: str):
-    await interaction.response.defer(ephemeral=True)
     storage_vc = bot.get_channel(storage_vc_id)
-    if storage_vc:
-        await storage_vc.send(
-            f"🆕NEW_FOLDER:{name}\n👤USER:{interaction.user.id}"
-        )
-        await interaction.followup.send(
-            f"✅ 📁 **{name}** を作成しました！", ephemeral=True
-        )
+    await storage_vc.send(
+        f"🆕NEW_FOLDER:{name}\n👤USER:{interaction.user.id}"
+    )
+    await interaction.response.send_message(
+        f"✅ フォルダ「📁 **{name}**」を新規作成しました！", ephemeral=True
+    )
 
 
 @bot.tree.command(
-    name="archive_view", description="アーカイブ一覧を表示します"
+    name="archive_view", description="自分が保存したアーカイブ一覧を表示します"
 )
 async def archive_view(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     embed = await my_embed_factory(
         interaction.user.id, interaction.user.display_name
     )
-    await interaction.followup.send(
-        embed=embed or "📭 フォルダがありません。", ephemeral=True
-    )
+    if embed is None:
+        await interaction.followup.send(
+            "📭 まだフォルダがありません。まずは `/category_add` で作成してください。",
+            ephemeral=True,
+        )
+    else:
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @bot.event
 async def on_message_delete(message: discord.Message):
     if message.author == bot.user:
         await check_and_restore_messages(
-            bot, post_id, archive_id, my_embed_factory
+            bot, post_id, archive_id, ArchiveViewButton(my_embed_factory)
         )
 
 
@@ -114,42 +130,56 @@ async def on_message_delete(message: discord.Message):
 async def on_message(message: discord.Message):
     if message.author.bot or message.channel.id != post_id:
         return
-    if bool(message.attachments) or "http" in message.content:
+
+    has_content = bool(message.attachments) or (
+        "http://" in message.content or "https://" in message.content
+    )
+    if has_content:
         storage_vc = bot.get_channel(storage_vc_id)
+        user_id = message.author.id
         folders = []
         async for msg in storage_vc.history(limit=1000):
             if msg.content.startswith("🆕NEW_FOLDER:"):
-                lines = msg.content.split("\n")
-                if (
-                    int(lines.replace("👤USER:", "").strip())
-                    == message.author.id
-                ):
-                    folders.append(
-                        lines.replace("🆕NEW_FOLDER:", "").strip()
+                try:
+                    f_name = (
+                        msg.content.split("🆕NEW_FOLDER:")
+                        .split("\n👤USER:")
+                        .strip()
                     )
+                    u_id = int(msg.content.split("👤USER:").strip())
+                    if u_id == user_id and f_name not in folders:
+                        folders.append(f_name)
+                except:
+                    continue
+
         if not folders:
             await message.reply(
-                "💡 まずは `/category_add` で" "フォルダを作ってください！"
+                "💡 まだ仕分けフォルダがありません。まずは `/category_add` コマンドでフォルダを作ってください！"
             )
             return
-        await message.reply(
-            "どのフォルダにアーカイブしますか？",
-            view=CategorySelectView(
-                reversed(folders), message, post_id, storage_vc_id
-            ),
+
+        view = CategorySelectView(
+            reversed(folders), message.id, post_id, storage_vc_id
         )
+        await message.reply("どのフォルダにアーカイブしますか？", view=view)
+
+    await bot.process_commands(message)
 
 
 @bot.event
 async def on_ready():
-    print(f"Online: {bot.user.name}")
+    print(f"ログインしました: {bot.user.name}")
     await bot.tree.sync()
 
 
 async def main():
     async with bot:
+        bot.loop.create_task(asyncio.sleep(9900))
         await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except:
+        pass
