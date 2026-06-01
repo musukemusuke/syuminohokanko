@@ -24,19 +24,14 @@ async def main():
                 print(f"❌ クラス {cog} のロードに失敗しました:")
                 traceback.print_exc()
 
-        # 💡 【重要修正：キャッシュの強制上書き】
-        # 一度、Discord側にある古いスラッシュコマンドの定義を完全に空（クリア）にします。
+        # 💡 【完全解決】連続呼び出しを廃止し、引数なしの sync() 1回だけで
+        # 内部の最新コマンド（nameとurl必須）へDiscord側を一括で書き換え同期させます。
         try:
-            print("🗑️ 古いスラッシュコマンドのキャッシュをクリア中...")
-            bot.tree.clear_commands(guild=None)
+            print("🔄 最新のスラッシュコマンド（name/url必須仕様）をDiscordと完全同期中...")
             await bot.tree.sync()
-            
-            # その直後に、新しく読み込んだ必須項目（nameとurl）つきの最新コマンドを上書き再同期します。
-            print("🔄 新しいスラッシュコマンド（必須urlつき）を完全強制同期中...")
-            await bot.tree.sync()
-            print("✅ すべてのスラッシュコマンドの強制上書き同期が完了しました！")
+            print("✅ すべてのスラッシュコマンドの同期が完了しました！")
         except Exception as e:
-            print(f"❌ コマンドの強制同期エラー: {e}")
+            print(f"❌ コマンド同期エラー: {e}")
 
         # ボットの起動
         await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
