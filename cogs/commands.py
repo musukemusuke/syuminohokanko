@@ -123,8 +123,7 @@ class CommandsCog(commands.Cog):
         if interaction.guild:
             self.bot.loop.create_task(self.update_archive_channel_embed(interaction.guild, interaction.user.id, interaction.user.display_name))
 
-    # 💡 【完全修正】url=None のような初期値（省略用の設定）を取り払い、
-    # name と url の両方を「入力しなければ絶対にコマンドを実行できない必須項目」に変更しました。
+    # 💡 【完全必須化】url引数に初期値を設定せず、nameとurlの2つを絶対に両方入力させるコマンドの定義です
     @app_commands.command(name="category_add", description="新しくデータを仕分けるフォルダカテゴリーを追加します")
     @app_commands.describe(name="追加するフォルダ名（例：動画、イラストなど）", url="このフォルダの基本となるURLリンク（例：https://youtube.com）")
     async def category_add(self, interaction: discord.Interaction, name: str, url: str):
@@ -135,7 +134,7 @@ class CommandsCog(commands.Cog):
             await interaction.response.send_message("❌ まだ `/setup` が完了していないか、金庫が見つかりません。", ephemeral=True)
             return
             
-        # 2つのデータを金庫に確実に刻み込みます
+        # 金庫に2つのデータを書き込みます
         await storage_vc.send(
             f"🆕NEW_FOLDER:{name}\n"
             f"👤USER:{interaction.user.id}\n"
