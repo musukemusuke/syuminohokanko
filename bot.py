@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-# 外部ファイルをそのままインポート
+# 外部ファイルを正確にインポート
 from restore import check_and_restore_messages
 from utils import build_archive_embed
 from views import ArchiveViewButton, CategorySelectView
@@ -56,14 +56,14 @@ async def setup_channels(interaction: discord.Interaction):
     )
     ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
 
+    # ★【完全非表示金庫】システムにブロックされずに、全人類からHideするVCを確実に生成
     if not ch_vc:
         overwrites = {
+            # サーバーの基本ロール「@everyone」の閲覧と接続を完全に禁止にする
             guild.default_role: discord.PermissionOverwrite(
                 view_channel=False, connect=False
             ),
-            guild.owner: discord.PermissionOverwrite(
-                view_channel=False, connect=False
-            ),
+            # ボット自身だけが見える・書ける設定にする（クラッシュを根絶）
             guild.me: discord.PermissionOverwrite(
                 view_channel=True, connect=True, send_messages=True
             ),
