@@ -14,7 +14,7 @@ async def on_ready():
 
 async def main():
     async with bot:
-        # 💡 正しい3つのファイルだけを厳密に読み込みます
+        # 正しいファイルを順番にロード
         cogs_to_load = ["cogs.admin", "cogs.commands", "cogs.listener"]
         for cog in cogs_to_load:
             try:
@@ -24,16 +24,12 @@ async def main():
                 print(f"❌ クラス {cog} のロードに失敗しました:")
                 traceback.print_exc()
 
-        # 💡 【重要：過去のコマンドの完全な上書き】
-        # bot.tree.sync() を実行する前に、現在のボットの「新しいコマンドリスト」で
-        # Discordサーバー側にある古い履歴（bookmark.pyの残骸）を完全に上書きして置き換えます。
+        # 💡 【完全上書き同期】すべてのファイルを読み込み終わった「後」に、
+        # 確実に Discord サーバーへ最新のコマンド定義（name/url必須仕様）を一括で強制登録します。
         try:
-            print("🗑️ Discord側の古いコマンド履歴を完全に上書き消去中...")
-            
-            # 登録されている全サーバーの古いグローバルコマンドを最新の3つのファイルで強制上書き
-            await bot.tree.sync(guild=None)
-            
-            print("✅ すべてのスラッシュコマンドの履歴が完全に入れ替わりました！")
+            print("🔄 スラッシュコマンド（name/url必須仕様）をDiscordへ完全同期中...")
+            await bot.tree.sync()
+            print("✅ すべてのスラッシュコマンドの画面更新が完了しました！")
         except Exception as e:
             print(f"❌ コマンド同期エラー: {e}")
 
