@@ -27,18 +27,18 @@ class AdminCog(commands.Cog):
                 category = await guild.create_category(name=category_name)
                 print(f"✅ カテゴリを作成しました: {category_name}")
 
-            # 2. データ金庫（非公開テキストチャンネル）用のパーミッション（権限）設定
-            # @everyone (全員) は見られない、ボット自身は見られる設定にする
-            overwrites = {
+            # 2. データ金庫用の権限（オーバライト）を設定
+            # @everyoneは閲覧不可、ボット自身は閲覧・送信可能にする
+            overwrites_storage = {
                 guild.default_role: discord.PermissionOverwrite(read_messages=False, send_messages=False),
                 guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, read_message_history=True)
             }
 
             # 3. 各種テキストチャンネルの生成（存在しない場合のみ作成）
             channels_to_create = [
-                {"name": "📥・ブックマーク", "type": "text", "overwrites": None},
-                {"name": "📚・アーカイブ", "type": "text", "overwrites": None},
-                {"name": "🤫・データ金庫", "type": "text", "overwrites": overwrites} # データ金庫は非公開に設定
+                {"name": "📥・ブックマーク", "overwrites": None},
+                {"name": "📚・アーカイブ", "overwrites": None},
+                {"name": "🤫・データ金庫", "overwrites": overwrites_storage} # ここを修正した辞書に指定
             ]
 
             for ch_info in channels_to_create:
