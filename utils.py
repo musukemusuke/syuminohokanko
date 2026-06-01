@@ -8,13 +8,13 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
 
     folders, archive_data = [], {}
 
-    # 金庫VCの過去ログを正確に読み込んで集計（バグ修正）
+    # 金庫VCの過去ログを正確に読み込んで集計（バグを完全に修正）
     async for msg in storage_vc.history(limit=1000):
         content = msg.content
 
         if content.startswith("🆕NEW_FOLDER:"):
             try:
-                # リスト化された中から、行番号[0]と[1]を狙い撃ちして文字を抽出
+                # 行ごとに分解し、配列のインデックス[0]や[1]から正しく文字を抽出
                 lines = content.split("\n")
                 f_name = lines[0].replace("🆕NEW_FOLDER:", "").strip()
                 u_id = int(lines[1].replace("👤USER:", "").strip())
@@ -27,7 +27,7 @@ async def build_archive_embed(bot, vc_id, user_id, display_name):
 
         elif content.startswith("📁FOLDER:"):
             try:
-                # リスト化された中から、行番号[0][1][2]を狙い撃ちして正確に抽出
+                # 行ごとに分解し、配列の各行から正確にデータを抽出
                 lines = content.split("\n")
                 f_name = lines[0].replace("📁FOLDER:", "").strip()
                 u_id = int(lines[1].replace("👤USER:", "").strip())
