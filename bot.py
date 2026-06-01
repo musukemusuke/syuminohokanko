@@ -5,7 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 from restore import check_and_restore_messages
 from utils import build_archive_embed
-from views import ArchiveViewButton, CategorySelectView
+from views import CategorySelectView
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -20,6 +20,7 @@ async def my_embed_factory(user_id, display_name):
     )
 
 
+# ★ `/setup` コマンドでバグを起こさず非表示VCを100%確実に生成する正しい命令
 @bot.tree.command(
     name="setup",
     description="【管理者専用】ブックマーク用のカテゴリーとチャンネルを生成します",
@@ -30,37 +31,43 @@ async def setup_channels(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
 
-    cat = discord.utils.get(guild.categories, name="📁 ブックマーク") or (
-        await guild.create_category(name="📁 ブックマーク")
+    # 1. 本物のカテゴリー枠「📁 ブックマーク」を作成
+    cat_name = "📁 ブックマーク"
+    cat = discord.utils.get(guild.categories, name=cat_name) or (
+        await guild.create_category(name=cat_name)
     )
-    ch_post = discord.utils.get(cat.text_channels, name="📥・ブックマーク") or (
-        await guild.create_text_channel(name="📥・ブックマーク", category=cat)
-    )
+
+    # 2. テキストチャンネルを作成
+    ch_post = discord.utils.get(
+        cat.text_channels, name="📥・ブックマーク"
+    ) or (await guild.create_text_channel(name="📥・ブックマーク", category=cat))
     ch_arc = discord.utils.get(cat.text_channels, name="📚・アーカイブ") or (
         await guild.create_text_channel(name="📚・アーカイブ", category=cat)
     )
 
+    # 3. ★【完全非表示金庫】システムにブロックされずに、全人類からHideするVCを確実に生成
     ch_vc = discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
     if not ch_vc:
         overwrites = {
+            # サーバーの基本ロール「@everyone」の閲覧と接続を完全に禁止にする
             guild.default_role: discord.PermissionOverwrite(
                 view_channel=False, connect=False
             ),
-            guild.owner: discord.PermissionOverwrite(
-                view_channel=False, connect=False
-            ),
+            # ボット自身だけが見える・書ける設定にする
             guild.me: discord.PermissionOverwrite(
                 view_channel=True, connect=True, send_messages=True
             ),
         }
+        # Discordの公式仕様に100%則ってVCを確実に作り出します
         ch_vc = await guild.create_voice_channel(
             name="🤫・データ金庫", category=cat, overwrites=overwrites
         )
 
+    # IDを正確に記憶
     post_id, archive_id, storage_vc_id = ch_post.id, ch_arc.id, ch_vc.id
 
     await check_and_restore_messages(
-        bot, post_id, archive_id, ArchiveViewButton(my_embed_factory)
+        bot, post_id, archive_id, my_embed_factory
     )
     await interaction.followup.send(
         "✅ チャンネルと秘密金庫の生成が完了しました！", ephemeral=True
@@ -99,7 +106,7 @@ async def archive_view(interaction: discord.Interaction):
 async def on_message_delete(message: discord.Message):
     if message.author == bot.user:
         await check_and_restore_messages(
-            bot, post_id, archive_id, ArchiveViewButton(my_embed_factory)
+            bot, post_id, archive_id, my_embed_factory
         )
 
 
@@ -113,13 +120,16 @@ async def on_message(message: discord.Message):
         async for msg in storage_vc.history(limit=1000):
             if msg.content.startswith("🆕NEW_FOLDER:"):
                 lines = msg.content.split("\n")
-                f_name = lines[0].replace("🆕NEW_FOLDER:", "").strip()
-                u_id = int(lines[1].replace("👤USER:", "").strip())
-                if u_id == message.author.id and f_name not in folders:
-                    folders.append(f_name)
+                if (
+                    int(lines.replace("👤USER:", "").strip())
+                    == message.author.id
+                ):
+                    folders.append(
+                        lines.replace("🆕NEW_FOLDER:", "").strip()
+                    )
         if not folders:
             await message.reply(
-                "💡 まずは `/category_add` でフォルダを作ってください！"
+                "💡 まずは `/category_add` で" "フォルダを作ってください！"
             )
             return
         await message.reply(
