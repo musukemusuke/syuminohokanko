@@ -3,8 +3,9 @@ import traceback
 
 class CategorySelect(discord.ui.Select):
 
-    def __init__(self, categories, message_id, post_id, vc_id):
-        self.message_id = message_id
+    # 💡 引数の名称を message_id から original_url に変更
+    def __init__(self, categories, original_url, post_id, vc_id):
+        self.original_url = original_url
         self.post_id = post_id
         self.vc_id = vc_id
         options = [
@@ -21,44 +22,36 @@ class CategorySelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        # 1. タイムアウトを防ぐため即座に応答を返す
         await interaction.response.defer(ephemeral=True)
         
         try:
             storage_vc = interaction.client.get_channel(self.vc_id)
             if not storage_vc:
-                await interaction.followup.send("❌ データ金庫チャンネルが見つかりません。再セットアップしてください。", ephemeral=True)
                 return
 
-            # ★【修正完了】self.valuesはリストなので、[0]で選択された文字列を直接取得
             selected_folder = self.values[0]
             
-            # ★【修正完了】Discordの正しいメッセージURLフォーマット（/channels/を挿入）に修正
-            archive_link = f"https://discord.com{interaction.guild_id}/{self.post_id}/{self.message_id}"
+            # 💡 ディスコードのリンクではなく、元々貼られていた元のURLをそのまま金庫に保存します
+            archive_link = self.original_url
 
-            # 金庫VCにデータを送信
             await storage_vc.send(
                 f"📁FOLDER:{selected_folder}\n"
                 f"👤USER:{interaction.user.id}\n"
                 f"🔗LINK:{archive_link}"
             )
-            
             await interaction.followup.send(
                 f"✅ **{selected_folder}** フォルダに登録しました！",
                 ephemeral=True,
             )
-            print(f"[SUCCESS] ユーザー {interaction.user.name} が '{selected_folder}' に保存しました。")
 
         except Exception as e:
-            print("[CRITICAL ERROR] セレクトメニュー処理中にエラーが発生しました:")
             traceback.print_exc()
-            await interaction.followup.send(f"❌ 保存処理中にエラーが発生しました: {e}", ephemeral=True)
 
 
 class CategorySelectView(discord.ui.View):
 
-    def __init__(self, categories, message_id, post_id, vc_id):
+    def __init__(self, categories, original_url, post_id, vc_id):
         super().__init__(timeout=60)
         self.add_item(
-            CategorySelect(categories, message_id, post_id, vc_id)
+            CategorySelect(categories, original_url, post_id, vc_id)
         )
