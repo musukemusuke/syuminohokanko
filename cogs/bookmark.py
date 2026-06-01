@@ -10,6 +10,9 @@ from views import CategorySelectView
 # チャンネル管理用のグローバルID
 post_id, archive_id, storage_vc_id = None, None, None
 
+# 💡 URL貼っても動作が詰まらないように、フォルダ名をメモリにキャッシュする仕組みを統合
+cached_folders = {} # {user_id: [folder_names]}
+
 def load_channel_ids(guild: discord.Guild):
     global post_id, archive_id, storage_vc_id
     cat = discord.utils.get(guild.categories, name="📁 ブックマーク")
@@ -52,6 +55,47 @@ class BookmarkCog(commands.Cog):
                 print(f"[{guild.name}] アーカイブ画面を自動更新しました。")
                 break
 
+    # 💡 重い1000件ループをURL貼り付け時にやらせないための、同期用バックグラウンド関数
+    async def sync_user_folders(self, user_id):
+        global storage_vc_id
+        storage_vc = self.bot.get_channel(storage_vc_id)
+        if not storage_vc:
+            return []
+
+        folders = []
+        deleted_folders = []
+
+        try:
+            async for msg in storage_vc.history(limit=1000):
+                if msg.content.startswith("🆕NEW_FOLDER:"):
+                    lines = msg.content.split("\n")
+                    f_name, u_id_text = None, None
+                    for line in lines:
+                        if line.startswith("🆕NEW_FOLDER:"):
+                            f_name = line.replace("🆕NEW_FOLDER:", "").strip()
+                        elif line.startswith("👤USER:"):
+                            u_id_text = line.replace("👤USER:", "").strip()
+                    if f_name and u_id_text and int(u_id_text) == user_id:
+                        if f_name not in folders and f_name not in deleted_folders:
+                            folders.append(f_name)
+
+                elif msg.content.startswith("🗑️DELETE_FOLDER:"):
+                    lines = msg.content.split("\n")
+                    f_name, u_id_text = None, None
+                    for line in lines:
+                        if line.startswith("🗑️DELETE_FOLDER:"):
+                            f_name = line.replace("🗑️DELETE_FOLDER:", "").strip()
+                        elif line.startswith("👤USER:"):
+                            u_id_text = line.replace("👤USER:", "").strip()
+                    if f_name and u_id_text and int(u_id_text) == user_id:
+                        deleted_folders.append(f_name)
+        except:
+            pass
+
+        active_folders = [f for f in folders if f not in deleted_folders]
+        cached_folders[user_id] = active_folders
+        return active_folders
+
     @commands.Cog.listener()
     async def on_ready(self):
         for guild in self.bot.guilds:
@@ -77,6 +121,9 @@ class BookmarkCog(commands.Cog):
             f"🆕NEW_FOLDER:{name}\n" f"👤USER:{interaction.user.id}"
         )
         
+        # フォルダが追加されたら即座にメモリに同期
+        await self.sync_user_folders(interaction.user.id)
+        
         embed = discord.Embed(
             description=f"📂 フォルダ 「**{name}**」 を新規作成しました！\n「📥・ブックマーク」から仕分け可能になります。",
             color=0xd4af37
@@ -101,6 +148,7 @@ class BookmarkCog(commands.Cog):
         success = await delete_category_logs(self.bot, storage_vc_id, interaction.user.id, name)
         
         if success:
+            await self.sync_user_folders(interaction.user.id)
             embed = discord.Embed(
                 description=f"🗑️ フォルダ 「**{name}**」 とその中のアーカイブデータをすべて削除しました。",
                 color=0xe74c3c
@@ -152,7 +200,7 @@ class BookmarkCog(commands.Cog):
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # 🛠️ 【最重要修正】第一引数に「self」をしっかりと追加しました
+    # 💡 Cogsのルール「self」を完璧に配置し、中身が詰まらない爆速メッセージリスナー
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         global post_id, storage_vc_id
@@ -162,7 +210,6 @@ class BookmarkCog(commands.Cog):
         if message.guild and (not post_id or not storage_vc_id):
             load_channel_ids(message.guild)
 
-        # チャンネルのID一致判定
         if message.channel.id != post_id:
             return
 
@@ -173,55 +220,23 @@ class BookmarkCog(commands.Cog):
         url_list = []
         memo_text = message.content.strip()
 
-        # 画像やファイルが貼られている場合の処理
         if message.attachments:
             for attachment in message.attachments:
                 url_list.append(attachment.url)
         else:
-            # 添付ファイルがない場合、貼られた文章（URLや文字）をそのまま保管対象にする
             if memo_text:
                 url_list.append(memo_text)
 
-        # 完全に空の場合はスキップ
         if not url_list:
             return
 
         user_id = message.author.id
-        folders = []
-        deleted_folders = []
-
-        async for msg in storage_vc.history(limit=1000):
-            if msg.content.startswith("🆕NEW_FOLDER:"):
-                try:
-                    lines = msg.content.split("\n")
-                    f_name, u_id_text = None, None
-                    for line in lines:
-                        if line.startswith("🆕NEW_FOLDER:"):
-                            f_name = line.replace("🆕NEW_FOLDER:", "").strip()
-                        elif line.startswith("👤USER:"):
-                            u_id_text = line.replace("👤USER:", "").strip()
-
-                    if f_name and u_id_text:
-                        if int(u_id_text) == user_id:
-                            if f_name not in folders and f_name not in deleted_folders:
-                                folders.append(f_name)
-                except:
-                    continue
-            elif msg.content.startswith("🗑️DELETE_FOLDER:"):
-                try:
-                    lines = msg.content.split("\n")
-                    f_name, u_id_text = None, None
-                    for line in lines:
-                        if line.startswith("🗑️DELETE_FOLDER:"):
-                            f_name = line.replace("🗑️DELETE_FOLDER:", "").strip()
-                        elif line.startswith("👤USER:"):
-                            u_id_text = line.replace("👤USER:", "").strip()
-                    if f_name and u_id_text and int(u_id_text) == user_id:
-                        deleted_folders.append(f_name)
-                except:
-                    continue
-
-        folders = [f for f in folders if f not in deleted_folders]
+        
+        # 💡 メモリのキャッシュから一瞬でフォルダ名を抜き出すため、URLを貼ってもフリーズしません
+        if user_id not in cached_folders or not cached_folders[user_id]:
+            folders = await self.sync_user_folders(user_id)
+        else:
+            folders = cached_folders[user_id]
 
         if not folders:
             await message.reply(
