@@ -54,7 +54,6 @@ class BookmarkCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # 起動時、全参加サーバーの設定を自動ロード
         for guild in self.bot.guilds:
             if load_channel_ids(guild):
                 print(f"[{guild.name}] のチャンネル設定を自動復元しました。")
@@ -162,6 +161,7 @@ class BookmarkCog(commands.Cog):
         if message.guild and (not post_id or not storage_vc_id):
             load_channel_ids(message.guild)
 
+        # 1. チャンネルが「📥・ブックマーク」でなければ即終了
         if message.channel.id != post_id:
             return
 
@@ -169,19 +169,23 @@ class BookmarkCog(commands.Cog):
         if not storage_vc:
             return
 
-        url_match = re.search(r"https?://[^\s]+", message.content)
-        memo_text = message.content.strip() if message.content.strip() else ""
-
+        # 💡 【完全万能化ロジック】
+        # 投稿された生コンテンツ（画像URL、生URL、ただの文章）を、条件で弾かずにそのまま格納します
         url_list = []
+        memo_text = message.content.strip()
+
         if message.attachments:
+            # 画像やファイルが1枚でも複数枚でも、その直接URLを取得
             for attachment in message.attachments:
                 url_list.append(attachment.url)
-            if not memo_text:
-                memo_text = f"ファイル合計: {len(message.attachments)}個"
-        elif url_match:
-            url_list.append(url_match.group(0))
         else:
-            url_list.append(f"https://discord.com{message.guild.id}/{message.channel.id}/{message.id}")
+            # 添付ファイルがなければ、本文（通常のURL、URLを含む文章、または普通のメモテキスト）をそのまま保存対象にする
+            if memo_text:
+                url_list.append(memo_text)
+
+        # 完全に中身が空の場合は処理をスキップ
+        if not url_list:
+            return
 
         user_id = message.author.id
         folders = []
@@ -226,6 +230,7 @@ class BookmarkCog(commands.Cog):
             )
             return
 
+        # 抽出した生のURL・テキストリストをそのまま画面（View）へ渡す
         view = CategorySelectView(
             reversed(folders), url_list, post_id, storage_vc_id, memo_text
         )
@@ -236,7 +241,6 @@ class BookmarkCog(commands.Cog):
         )
         await message.reply(embed=embed_reply, view=view)
 
-        # 自動リフレッシュタスクの実行
         async def refresh_task():
             await asyncio.sleep(2)
             await self.update_archive_channel_embed(message.guild, message.author.id, message.author.display_name)
