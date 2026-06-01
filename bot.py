@@ -14,8 +14,8 @@ async def on_ready():
 
 async def main():
     async with bot:
-        # 管理用とブックマーク用のCogsファイルをロード
-        cogs_to_load = ["cogs.admin", "cogs.bookmark"]
+        # 💡 ロードするファイルを細かく分けたものに指定
+        cogs_to_load = ["cogs.admin", "cogs.commands", "cogs.listener"]
         for cog in cogs_to_load:
             try:
                 await bot.load_extension(cog)
@@ -24,7 +24,6 @@ async def main():
                 print(f"❌ クラス {cog} のロードに失敗しました:")
                 traceback.print_exc()
 
-        # すべてのCogsが読み込まれた後に、一括でDiscord側とスラッシュコマンドを同期
         try:
             print("🔄 スラッシュコマンドをDiscordと同期中...")
             await bot.tree.sync()
@@ -32,7 +31,6 @@ async def main():
         except Exception as e:
             print(f"❌ コマンド同期エラー: {e}")
 
-        # ボットの起動
         await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 if __name__ == "__main__":
