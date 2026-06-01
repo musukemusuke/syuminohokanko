@@ -4,13 +4,9 @@ on:
   push:
     branches: [ main ]
   schedule:
-    # 3時間ごとに自動起動してバトンを繋ぐ（6時間制限の対策）
+    # 3時間ごとに自動起動して6時間制限を回避する
     - cron: '0 */3 * * *'
-  workflow_dispatch: # 手動で起動できるボタンを追加
-
-# ★【最重要】一番上のこの位置に書くことで、GitHub Actions全体にNode 24への強制移行を適用します！
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  workflow_dispatch: # 手動でいつでも起動できるボタン
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,22 +16,18 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
     steps:
-    # Node 24で100%動作する最新のチェックアウト部品
-    - name: Checkout code safely
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    # @v5 が内部でNode 20を使っていても、上の環境変数のおかげで強制的にNode 24で安全に実行されます
-    - name: Set up Python safely
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
-    # ボットに必要な部品のインストール
     - name: Install dependencies
       run: |
         pip install discord.py
 
-    # 6時間制限にかかる前に、2時間45分で安全に自己終了させる命令
     - name: Start Bot with Timeout
       env:
         DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
