@@ -45,6 +45,7 @@ class CategorySelect(discord.ui.Select):
 
             selected = self.values
 
+            # 共通パース関数が100%読み込める正規フォーマット（キーから絵文字を完全排除）でスレッドへ送信
             for link in self.original_urls:
                 await self.target_dest.send(
                     f"FOLDER:{selected}\n"
@@ -57,6 +58,7 @@ class CategorySelect(discord.ui.Select):
                 color=0xd4af37
             )
             
+            # コンポーネントを無効化してボタンの連打や二重入力を防止
             self.view.stop()
             for item in self.view.children:
                 if hasattr(item, "disabled"):
@@ -83,7 +85,7 @@ class CategorySelectView(discord.ui.View):
         folder_url_map: Optional[Dict[str, List[str]]] = None,
     ):
         super().__init__(timeout=120)
-        self.message: Optional[discord.Message] = None
+        self.message: Optional[discord.Message] = None  # タイムアウト時の自動グレーアウト編集用
         self.add_item(CategorySelect(categories, original_urls, post_id, target_dest, folder_url_map))
 
     async def on_timeout(self):
