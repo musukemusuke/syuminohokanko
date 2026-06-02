@@ -25,29 +25,48 @@ class AdminCog(commands.Cog):
                 category = await guild.create_category(name=category_name)
                 print(f"✅ カテゴリを作成しました: {category_name}")
 
-            channels_to_create = ["📥・ブックマーク", "📚・アーカイブ", "🤫・データ"]
+            # 復活したトピック説明欄の定義と、新名称「🤫・データ」への完全変更
+            channels_to_create = [
+                {
+                    "name": "📥・ブックマーク", 
+                    "topic": "ここにURLリンクを貼り付けるだけで、自動的に趣味のフォルダへ保管できます。文字の入力は自由です。"
+                },
+                {
+                    "name": "📚・アーカイブ", 
+                    "topic": "保存した趣味一覧を表示・確認するためのチャンネルです。コマンド実行時に連動します。"
+                },
+                {
+                    "name": "🤫・データ", 
+                    "topic": "管理者専用（一般ユーザーは入力不可）。裏側でユーザー別のプライベートスレッドが保管される場所です。"
+                }
+            ]
 
             created_channels = {}
-            for ch_name in channels_to_create:
-                existing_ch = discord.utils.get(category.text_channels, name=ch_name)
+            for ch_info in channels_to_create:
+                existing_ch = discord.utils.get(category.text_channels, name=ch_info["name"])
                 if not existing_ch:
-                    new_ch = await guild.create_text_channel(name=ch_name, category=category)
-                    created_channels[ch_name] = new_ch
-                    print(f"✅ チャンネルを作成しました: {ch_name}")
+                    new_ch = await guild.create_text_channel(
+                        name=ch_info["name"], 
+                        category=category,
+                        topic=ch_info["topic"]
+                    )
+                    created_channels[ch_info["name"]] = new_ch
+                    print(f"✅ チャンネルを作成しました: {ch_info['name']}")
                 else:
-                    created_channels[ch_name] = existing_ch
+                    if existing_ch.topic != ch_info["topic"]:
+                        await existing_ch.edit(topic=ch_info["topic"])
+                    created_channels[ch_info["name"]] = existing_ch
 
-            # 【重要修正】「🤫・データ」チャンネルの権限設定
-            # 一般ユーザー(@everyone)は閲覧もメッセージ送信も完全に禁止(False)にします
+            # 「🤫・データ」チャンネルの完全送信ロックダウン（一般ユーザーは入力不可に）
             storage_ch = created_channels.get("🤫・データ")
             if storage_ch:
                 await storage_ch.set_permissions(
                     guild.default_role, 
                     read_messages=False, 
                     send_messages=False,
-                    send_messages_in_threads=False # スレッド内での一般送信も禁止
+                    send_messages_in_threads=False
                 )
-                # ボット自身(自分)は読み書き・スレッド作成をすべて許可
+                # 引数でのTypeErrorを物理的に回避するため、作成後に個別オブジェクトで権限を上書き
                 await storage_ch.set_permissions(
                     guild.me, 
                     read_messages=True, 
@@ -68,18 +87,10 @@ class AdminCog(commands.Cog):
                         content="⚠️ チャンネルは作成できましたが、IDの読み込みに失敗しました。再度お試しください。"
                     )
 
+            # 余計な文字をすべて削り、シンプルに一言だけ完了を通知
             await interaction.followup.edit_message(
                 message_id=msg.id,
-                content=(
-                    "✅ **初期設定が完了しました！**\n\n"
-                    "以下のチャンネルが生成されました：\n"
-                    "| チャンネル名 | 役割 |\n"
-                    "| --- | --- |\n"
-                    "| `📥・ブックマーク` | URLを貼ると自動保存用メニューが出ます |\n"
-                    "| `📚・アーカイブ` | アーカイブ閲覧時に利用されます |\n"
-                    "| `🤫・データ` | **一般ユーザーの入力は完全禁止。** 裏でボットがスレッドを管理します |\n\n"
-                    "※もしスラッシュコマンドが上手く表示されない場合は、続けて `/sync` コマンドを実行してください。"
-                )
+                content="✅ **初期設定が完了しました！**"
             )
 
         except Exception as e:
@@ -95,10 +106,11 @@ class AdminCog(commands.Cog):
         try:
             msg = await interaction.followup.send("🔄 コマンド同期を実行中...", ephemeral=True)
             bot = interaction.client
+            # 重複増殖バグを根本から防止するため、copy_global_to は使用せずsyncのみを実行
             await bot.tree.sync()
             await interaction.followup.edit_message(
                 message_id=msg.id, 
-                content="✅ 全体のスラッシュコマンド同期を申請しました！反映まで数分かかる場合があります。"
+                content="✅ 全体のスラッシュコマンド同期を申請しました！重複データが消えて反映されるまで数分〜最大1時間ほどかかる場合があります。"
             )
         except Exception as e:
             traceback.print_exc()
