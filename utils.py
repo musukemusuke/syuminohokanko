@@ -14,12 +14,14 @@ def _parse_log(content: str) -> Dict[str, str]:
             continue
         # URL内の「:」を巻き込まないよう、最初の「:」だけで分割
         key, value = line.split(":", 1)
-        key = key.strip()
+        
+        # 【超重要】前後にある余計な空白文字や特殊文字を完全に排除する
+        key = key.strip().replace(" ", "").replace("　", "")
         value = value.strip()
 
-        # 余計な引用符・括弧・非表示の空白文字を除去
+        # 余計な引用符・括弧・非表示の空白文字をループで徹底的に除去
         for c in ['"', "'", "[", "]", " ", "　"]:
-            if value.startswith(c) and value.endswith(c):
+            while value.startswith(c) and value.endswith(c) and len(value) > 1:
                 value = value[1:-1].strip()
         
         data[key] = value
@@ -133,7 +135,6 @@ async def search_archive_data(bot, channel_id: int, user_id: int, keyword: str):
             clean_link = link.strip().lower() if link else ""
 
             if search_keyword in clean_f_name or (link and search_keyword in clean_link):
-                # 【修正】フォルダ作成ログ(NEW_FOLDER)の場合は、代表リンクとして綺麗に出力する
                 if "NEW_FOLDER" in content:
                     results.append(f"📂 **{f_name}** (フォルダ)\n└ ⭐ 代表リンク: {link or 'なし'}")
                 else:
@@ -163,16 +164,25 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
     to_delete_bulk = []
     to_delete_single = []
     
+    # 14日制限の基準時間を計算
     now = datetime.now(timezone.utc)
     limit_time = now - timedelta(days=14)
 
+    # 判定ミスのブレをなくすため比較対象のフォルダ名をクリーンにする
+    target_folder = folder_name.strip()
+
     try:
         async for msg in storage_channel.history(limit=1500):
-            parsed = _parse_log(msg.content)
+            content = msg.content.strip()
+            if "NEW_FOLDER" not in content and "FOLDER" not in content:
+                continue
+
+            parsed = _parse_log(content)
             f_name = parsed.get("NEW_FOLDER") or parsed.get("FOLDER")
             u_id = parsed.get("USER")
 
-            if f_name == folder_name and u_id and int(u_id) == user_id:
+            # 【重要修正】IDとフォルダ名の前後の空白を完全に削ってから安全に比較する
+            if f_name and u_id and f_name.strip() == target_folder and int(u_id) == user_id:
                 if msg.created_at > limit_time:
                     to_delete_bulk.append(msg)
                 else:
@@ -181,6 +191,7 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
         if not to_delete_bulk and not to_delete_single:
             return False
 
+        # 14日以内のメッセージを一括削除
         if to_delete_bulk:
             for i in range(0, len(to_delete_bulk), 100):
                 batch = to_delete_bulk[i:i + 100]
@@ -190,6 +201,7 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
                     await storage_channel.delete_messages(batch)
                 await asyncio.sleep(0.3)
 
+        # 14日以上前のメッセージを1件ずつ削除
         if to_delete_single:
             for msg in to_delete_single:
                 try:
