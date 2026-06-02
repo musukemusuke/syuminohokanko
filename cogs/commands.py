@@ -2,7 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-# 以前のステップで修正・共通化した関数とクラスをインポート
+# 共通関数とクラスをインポート
 from utils import build_archive_embed, search_archive_data, delete_category_logs, _parse_log
 from views import CategorySelectView
 
@@ -14,7 +14,7 @@ def get_guild_data(guild_id: int):
         guild_data[guild_id] = {
             "post_id": None,
             "archive_id": None,
-            "storage_channel_id": None,  # vcからchannelに名称変更
+            "storage_channel_id": None,
             "folders": {}  # user_id -> [folder_names]
         }
     return guild_data[guild_id]
@@ -36,7 +36,7 @@ class CommandsCog(commands.Cog):
         data["post_id"] = discord.utils.get(cat.text_channels, name="📥・ブックマーク").id if discord.utils.get(cat.text_channels, name="📥・ブックマーク") else None
         data["archive_id"] = discord.utils.get(cat.text_channels, name="📚・アーカイブ").id if discord.utils.get(cat.text_channels, name="📚・アーカイブ") else None
         
-        # 【改善】安定運用のためにボイスチャンネルではなくテキストチャンネルから取得するように修正
+        # 安定運用のために非公開テキストチャンネルを取得
         storage_ch = (
             discord.utils.get(cat.text_channels, name="🤫・データ金庫") or 
             discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
@@ -46,7 +46,7 @@ class CommandsCog(commands.Cog):
         return bool(data["storage_channel_id"])
 
     async def sync_user_folders_from_history(self, channel, user_id: int) -> list:
-        """【新規追加】再起動対策：ログ金庫の過去履歴からユーザーのフォルダ一覧を自動復元する"""
+        """再起動対策：ログ金庫の過去履歴からユーザーのフォルダ一覧を自動復元する"""
         detected_folders = set()
         try:
             async for msg in channel.history(limit=1000):
@@ -88,50 +88,10 @@ class CommandsCog(commands.Cog):
             data["folders"][user_id].append(name)
             data["folders"][user_id].sort()
 
-        # 【修正】読み込み側の _parse_log が100%パースできるように、コロンの左側から絵文字を排除
+        # パースがブレないように確実なテキスト形式で保存
         await storage_channel.send(f"NEW_FOLDER:{name}\nUSER:{user_id}\nLINK:{url}")
 
         await interaction.followup.send(f"✅ フォルダ「**{name}**」を作成しました！", ephemeral=True)
-
-    @app_commands.command(name="archive_add", description="URLをフォルダに保存します")
-    @app_commands.describe(url="保存したいURL")
-    async def archive_add(self, interaction: discord.Interaction, url: str):
-        if not interaction.guild: 
-            return await interaction.response.send_message("サーバー内のみ使用可能です", ephemeral=True)
-
-        data = get_guild_data(interaction.guild.id)
-        
-        if not data["storage_channel_id"]:
-            self.load_channel_ids(interaction.guild)
-            
-        storage_channel = self.bot.get_channel(data["storage_channel_id"])
-        if not storage_channel:
-            return await interaction.response.send_message("❌ データ金庫がセットアップされていません。", ephemeral=True)
-
-        user_id = interaction.user.id
-        
-        # 【修正】ボット再起動後でも動くように、実行時に金庫のログからフォルダ一覧をその場で復元
-        folders = await self.sync_user_folders_from_history(storage_channel, user_id)
-        data["folders"][user_id] = folders
-
-        if not folders:
-            return await interaction.response.send_message("📂 作成済みのフォルダがありません。\n`/category_add` で先にフォルダを作成してください。", ephemeral=True)
-
-        # 修正された型に合わせて引数を渡す（reversedのリストを渡す）
-        view = CategorySelectView(list(reversed(folders)), [url], data["post_id"], data["storage_channel_id"])
-        
-        embed = discord.Embed(
-            title="📥 保存先を選択してください",
-            description=f"URL:\n{url}",
-            color=0x2f3136
-        )
-        
-        # メッセージを送信し、タイムアウト処理用にviewオブジェクトにメッセージを記録させておく
-        msg = await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-        if isinstance(msg, discord.InteractionMessage):
-            view.message = msg
-        else:
-            view.message = await interaction.original_response()
 
     @app_commands.command(name="category_delete", description="フォルダと中身をすべて削除します")
     @app_commands.describe(name="削除するフォルダ名")
@@ -143,7 +103,6 @@ class CommandsCog(commands.Cog):
             self.load_channel_ids(interaction.guild)
 
         if await delete_category_logs(self.bot, data["storage_channel_id"], interaction.user.id, name):
-            # メモリ上と過去ログ履歴の両方から削除を反映
             storage_channel = self.bot.get_channel(data["storage_channel_id"])
             data["folders"][interaction.user.id] = await self.sync_user_folders_from_history(storage_channel, interaction.user.id)
             await interaction.followup.send(f"🗑️ フォルダ「**{name}**」とその中身を完全に削除しました。", ephemeral=True)
