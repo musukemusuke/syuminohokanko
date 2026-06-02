@@ -25,7 +25,6 @@ class AdminCog(commands.Cog):
                 category = await guild.create_category(name=category_name)
                 print(f"✅ カテゴリを作成しました: {category_name}")
 
-            # 【変更】「🤫・データ金庫」から「🤫・データ」に修正
             channels_to_create = ["📥・ブックマーク", "📚・アーカイブ", "🤫・データ"]
 
             created_channels = {}
@@ -38,19 +37,27 @@ class AdminCog(commands.Cog):
                 else:
                     created_channels[ch_name] = existing_ch
 
-            # 権限とスレッド作成権限の設定
+            # 【重要修正】「🤫・データ」チャンネルの権限設定
+            # 一般ユーザー(@everyone)は閲覧もメッセージ送信も完全に禁止(False)にします
             storage_ch = created_channels.get("🤫・データ")
             if storage_ch:
-                await storage_ch.set_permissions(guild.default_role, read_messages=False, send_messages=False)
+                await storage_ch.set_permissions(
+                    guild.default_role, 
+                    read_messages=False, 
+                    send_messages=False,
+                    send_messages_in_threads=False # スレッド内での一般送信も禁止
+                )
+                # ボット自身(自分)は読み書き・スレッド作成をすべて許可
                 await storage_ch.set_permissions(
                     guild.me, 
                     read_messages=True, 
                     send_messages=True, 
                     read_message_history=True,
                     manage_threads=True,
-                    create_private_threads=True
+                    create_private_threads=True,
+                    send_messages_in_threads=True
                 )
-                print("🔒 データチャンネルの非公開化およびスレッド権限設定が完了しました。")
+                print("🔒 データチャンネルの完全ロックダウンおよびスレッド権限設定が完了しました。")
 
             commands_cog = self.bot.get_cog("CommandsCog")
             if commands_cog and hasattr(commands_cog, "load_channel_ids"):
@@ -70,8 +77,8 @@ class AdminCog(commands.Cog):
                     "| --- | --- |\n"
                     "| `📥・ブックマーク` | URLを貼ると自動保存用メニューが出ます |\n"
                     "| `📚・アーカイブ` | アーカイブ閲覧時に利用されます |\n"
-                    "| `🤫・データ` | ユーザー別の**プライベートスレッド**が裏で自動生成・保管されます |\n\n"
-                    "※スラッシュコマンド一覧が正しく反映されない場合は、続けて `/sync` コマンドを実行してください。"
+                    "| `🤫・データ` | **一般ユーザーの入力は完全禁止。** 裏でボットがスレッドを管理します |\n\n"
+                    "※もしスラッシュコマンドが上手く表示されない場合は、続けて `/sync` コマンドを実行してください。"
                 )
             )
 
@@ -91,7 +98,7 @@ class AdminCog(commands.Cog):
             await bot.tree.sync()
             await interaction.followup.edit_message(
                 message_id=msg.id, 
-                content="✅ 全体のスラッシュコマンド同期を申請しました！重複データが消えて反映されるまで数分〜最大1時間ほどかかる場合があります。"
+                content="✅ 全体のスラッシュコマンド同期を申請しました！反映まで数分かかる場合があります。"
             )
         except Exception as e:
             traceback.print_exc()
