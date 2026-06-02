@@ -4,7 +4,9 @@ import asyncio
 from typing import Dict, List, Union
 from datetime import datetime, timedelta, timezone
 
+# ====================== 共通パーサー ======================
 def _parse_log(content: str) -> Dict[str, str]:
+    """ログデータを安全にパースする共通関数"""
     data = {}
     for line in content.split("\n"):
         line = line.strip()
@@ -23,6 +25,7 @@ def _parse_log(content: str) -> Dict[str, str]:
     return data
 
 
+# ====================== メイン関数 ======================
 async def build_archive_embed(bot, target_loc: Union[discord.TextChannel, discord.Thread], user_id: int, display_name: str):
     if not target_loc:
         return None
@@ -170,6 +173,7 @@ async def delete_category_logs(bot, target_loc: Union[discord.TextChannel, disco
         if not to_delete_bulk and not to_delete_single:
             return False
 
+        # 対象のデータを削除
         if to_delete_bulk:
             for msg in to_delete_bulk:
                 try:
@@ -185,6 +189,24 @@ async def delete_category_logs(bot, target_loc: Union[discord.TextChannel, disco
                     await asyncio.sleep(0.1)
                 except discord.NotFound:
                     pass
+
+        # 【新規追加】スレッドの自動消去判定（クリーンアップロジック）
+        # 対象フォルダを消し去ったあとに、まだスレッド内に他のフォルダのデータ（NEW_FOLDER）が残っているかチェックします
+        if isinstance(target_loc, discord.Thread):
+            has_other_data = False
+            try:
+                async for remaining_msg in target_loc.history(limit=100):
+                    # 他の生き残っている保存ログがあるかチェック
+                    if "NEW_FOLDER" in remaining_msg.content or "FOLDER" in remaining_msg.content:
+                        has_other_data = True
+                        break
+                
+                # 他にフォルダデータが一切見つからない（完全にまっさらな空っぽ）ならスレッド自体を消去
+                if not has_other_data:
+                    print(f"🧹 空になったプライベートスレッドを自動削除します: {target_loc.name}")
+                    await target_loc.delete()
+            except Exception:
+                pass
 
         return True
 
