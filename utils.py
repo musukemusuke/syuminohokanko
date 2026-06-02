@@ -12,11 +12,14 @@ def _parse_log(content: str) -> Dict[str, str]:
         line = line.strip()
         if ":" not in line:
             continue
+        # URL内の「:」を巻き込まないよう、最初の「:」だけで分割
         key, value = line.split(":", 1)
         
+        # 前後にある余計な空白文字や特殊文字を完全に排除する
         key = key.strip().replace(" ", "").replace("　", "")
         value = value.strip()
 
+        # 余計な引用符・括弧・非表示の空白文字をループで徹底的に除去
         for c in ['"', "'", "[", "]", " ", "　"]:
             while value.startswith(c) and value.endswith(c) and len(value) > 1:
                 value = value[1:-1].strip()
@@ -31,8 +34,8 @@ async def build_archive_embed(bot, target_loc: Union[discord.TextChannel, discor
         return None
 
     folders: List[str] = []
-    folder_rep: Dict[str, str] = {}      
-    archive_data: Dict[str, List[str]] = {}  
+    folder_rep: Dict[str, str] = {}      # フォルダ作成時の代表URL
+    archive_data: Dict[str, List[str]] = {}  # {folder: [urls...]}
 
     try:
         async for msg in target_loc.history(limit=1500):
@@ -41,6 +44,7 @@ async def build_archive_embed(bot, target_loc: Union[discord.TextChannel, discor
                 continue
             parsed = _parse_log(content)
 
+            # 新規フォルダ作成
             if "NEW_FOLDER" in content:
                 f_name = parsed.get("NEW_FOLDER")
                 u_id = parsed.get("USER")
@@ -52,6 +56,7 @@ async def build_archive_embed(bot, target_loc: Union[discord.TextChannel, discor
                         folder_rep[f_name] = link
                     archive_data.setdefault(f_name, [])
 
+            # 実際の保存データ
             elif "FOLDER" in content:
                 f_name = parsed.get("FOLDER")
                 u_id = parsed.get("USER")
@@ -87,6 +92,7 @@ async def build_archive_embed(bot, target_loc: Union[discord.TextChannel, discor
         lines.extend(urls)
         value = "\n".join(lines) if lines else "（まだ何も保存されていません）"
         
+        # Embed制限対策
         if len(value) > 1000:
             value = value[:997] + "..."
 
@@ -121,6 +127,7 @@ async def search_archive_data(bot, target_loc: Union[discord.TextChannel, discor
             clean_f_name = f_name.strip().lower()
             clean_link = link.strip().lower() if link else ""
 
+            # 空白文字や大文字小文字のズレを吸収して部分一致検索を行う
             if search_keyword in clean_f_name or (link and search_keyword in clean_link):
                 if "NEW_FOLDER" in content:
                     results.append(f"📂 **{f_name}** (フォルダ)\n└ ⭐ 代表リンク: {link or 'なし'}")
@@ -150,6 +157,7 @@ async def delete_category_logs(bot, target_loc: Union[discord.TextChannel, disco
     to_delete_bulk = []
     to_delete_single = []
     
+    # 14日制限の基準時間を計算
     now = datetime.now(timezone.utc)
     limit_time = now - timedelta(days=14)
     target_folder = folder_name.strip()
@@ -164,6 +172,7 @@ async def delete_category_logs(bot, target_loc: Union[discord.TextChannel, disco
             f_name = parsed.get("NEW_FOLDER") or parsed.get("FOLDER")
             u_id = parsed.get("USER")
 
+            # 判定ミスを完全に防ぐため、IDと文字列の型・前後の空白をクリーンに揃えて比較
             if f_name and u_id and f_name.strip() == target_folder and int(u_id) == user_id:
                 if msg.created_at > limit_time:
                     to_delete_bulk.append(msg)
@@ -173,7 +182,7 @@ async def delete_category_logs(bot, target_loc: Union[discord.TextChannel, disco
         if not to_delete_bulk and not to_delete_single:
             return False
 
-        # 対象のデータを削除
+        # メッセージの削除実行
         if to_delete_bulk:
             for msg in to_delete_bulk:
                 try:
@@ -190,18 +199,17 @@ async def delete_category_logs(bot, target_loc: Union[discord.TextChannel, disco
                 except discord.NotFound:
                     pass
 
-        # 【新規追加】スレッドの自動消去判定（クリーンアップロジック）
-        # 対象フォルダを消し去ったあとに、まだスレッド内に他のフォルダのデータ（NEW_FOLDER）が残っているかチェックします
+        # 空スレッド自動削除クリーンアップ機能
+        # 対象フォルダを消し去ったあとに、まだスレッド内に他のフォルダのデータが残っているかチェック
         if isinstance(target_loc, discord.Thread):
             has_other_data = False
             try:
                 async for remaining_msg in target_loc.history(limit=100):
-                    # 他の生き残っている保存ログがあるかチェック
                     if "NEW_FOLDER" in remaining_msg.content or "FOLDER" in remaining_msg.content:
                         has_other_data = True
                         break
                 
-                # 他にフォルダデータが一切見つからない（完全にまっさらな空っぽ）ならスレッド自体を消去
+                # 他にフォルダデータが一切残っていない（データがゼロになった）ならスレッド自体を消去
                 if not has_other_data:
                     print(f"🧹 空になったプライベートスレッドを自動削除します: {target_loc.name}")
                     await target_loc.delete()
