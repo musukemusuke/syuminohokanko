@@ -2,14 +2,13 @@ import discord
 import traceback
 from typing import List, Dict, Optional, Union
 
-
 class CategorySelect(discord.ui.Select):
     def __init__(
         self,
         categories: List[str],
         original_urls: List[str],
         post_id: int,
-        target_dest: Union[discord.TextChannel, discord.Thread], # IDではなくオブジェクトを受け取る
+        target_dest: Union[discord.TextChannel, discord.Thread], 
         folder_url_map: Optional[Dict[str, List[str]]] = None,
     ):
         self.original_urls = original_urls
@@ -46,7 +45,6 @@ class CategorySelect(discord.ui.Select):
 
             selected = self.values
 
-            # プライベートスレッドへ直接安全にログを書き込み
             for link in self.original_urls:
                 await self.target_dest.send(
                     f"FOLDER:{selected}\n"
