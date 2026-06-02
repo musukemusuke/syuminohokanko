@@ -15,7 +15,7 @@ def _parse_log(content: str) -> Dict[str, str]:
         # URL内の「:」を巻き込まないよう、最初の「:」だけで分割
         key, value = line.split(":", 1)
         
-        # 【超重要】前後にある余計な空白文字や特殊文字を完全に排除する
+        # 前後にある余計な空白文字や特殊文字を完全に排除する
         key = key.strip().replace(" ", "").replace("　", "")
         value = value.strip()
 
@@ -168,7 +168,6 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
     now = datetime.now(timezone.utc)
     limit_time = now - timedelta(days=14)
 
-    # 判定ミスのブレをなくすため比較対象のフォルダ名をクリーンにする
     target_folder = folder_name.strip()
 
     try:
@@ -181,7 +180,6 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
             f_name = parsed.get("NEW_FOLDER") or parsed.get("FOLDER")
             u_id = parsed.get("USER")
 
-            # 【重要修正】IDとフォルダ名の前後の空白を完全に削ってから安全に比較する
             if f_name and u_id and f_name.strip() == target_folder and int(u_id) == user_id:
                 if msg.created_at > limit_time:
                     to_delete_bulk.append(msg)
@@ -191,12 +189,12 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
         if not to_delete_bulk and not to_delete_single:
             return False
 
-        # 14日以内のメッセージを一括削除
+        # 【修正】14日以内のメッセージを一括削除（リストのインデックスバグを修正）
         if to_delete_bulk:
             for i in range(0, len(to_delete_bulk), 100):
                 batch = to_delete_bulk[i:i + 100]
                 if len(batch) == 1:
-                    await batch.delete()
+                    await batch[0].delete()  # batch から最初の要素を取り出すように修正
                 else:
                     await storage_channel.delete_messages(batch)
                 await asyncio.sleep(0.3)
