@@ -39,14 +39,21 @@ class AdminCog(commands.Cog):
                 else:
                     created_channels[ch_name] = existing_ch
 
-            # 3. 引数のバグ（TypeError）を完全に回避するため作成後に個別メソッドで権限を設定
+            # 3. データ金庫の権限を設定（スレッド管理の権限を追加）
             storage_ch = created_channels.get("🤫・データ金庫")
             if storage_ch:
                 # 全員の閲覧を禁止
                 await storage_ch.set_permissions(guild.default_role, read_messages=False, send_messages=False)
-                # ボット自身の読み書きを確実に許可
-                await storage_ch.set_permissions(guild.me, read_messages=True, send_messages=True, read_message_history=True)
-                print("🔒 データ金庫の非公開化設定が完了しました。")
+                # ボット自身の読み書き・スレッド操作権限を確実に許可
+                await storage_ch.set_permissions(
+                    guild.me, 
+                    read_messages=True, 
+                    send_messages=True, 
+                    read_message_history=True,
+                    manage_threads=True,
+                    create_private_threads=True
+                )
+                print("🔒 データ金庫の非公開化およびスレッド権限設定が完了しました。")
 
             # 4. CommandsCogへのチャンネルID再読み込み通知
             commands_cog = self.bot.get_cog("CommandsCog")
@@ -58,7 +65,6 @@ class AdminCog(commands.Cog):
                         content="⚠️ チャンネルは作成できましたが、IDの読み込みに失敗しました。再度お試しください。"
                     )
 
-            # 5. 完了通知
             await interaction.followup.edit_message(
                 message_id=msg.id,
                 content=(
@@ -68,7 +74,7 @@ class AdminCog(commands.Cog):
                     "| --- | --- |\n"
                     "| `📥・ブックマーク` | URLを貼ると自動保存用メニューが出ます |\n"
                     "| `📚・アーカイブ` | アーカイブ閲覧時に利用されます |\n"
-                    "| `🤫・データ金庫` | 管理者専用（非公開）。データが安全に保存されます |\n\n"
+                    "| `🤫・データ金庫` | ユーザー別の**プライベートスレッド**が裏で自動生成・保管されます |\n\n"
                     "※スラッシュコマンド一覧が正しく反映されない場合は、続けて `/sync` コマンドを実行してください。"
                 )
             )
@@ -85,16 +91,12 @@ class AdminCog(commands.Cog):
 
         try:
             msg = await interaction.followup.send("🔄 コマンド同期を実行中...", ephemeral=True)
-            
             bot = interaction.client
-            # コマンド重複増殖バグを根本から防止するため、copy_global_to は廃止しsyncのみ実行
             await bot.tree.sync()
-            
             await interaction.followup.edit_message(
                 message_id=msg.id, 
                 content="✅ 全体のスラッシュコマンド同期を申請しました！重複データが消えて反映されるまで数分〜最大1時間ほどかかる場合があります。"
             )
-            
         except Exception as e:
             traceback.print_exc()
             await interaction.followup.send(f"❌ 同期中にエラーが発生しました: {e}", ephemeral=True)
