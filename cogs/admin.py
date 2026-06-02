@@ -19,15 +19,14 @@ class AdminCog(commands.Cog):
         try:
             msg = await interaction.followup.send("🛠️ ブックマーク環境を設定中...（チャンネルを生成しています）", ephemeral=True)
 
-            # 1. カテゴリの作成または取得
             category_name = "📁 ブックマーク"
             category = discord.utils.get(guild.categories, name=category_name)
             if not category:
                 category = await guild.create_category(name=category_name)
                 print(f"✅ カテゴリを作成しました: {category_name}")
 
-            # 2. 生成するチャンネルの名前リスト
-            channels_to_create = ["📥・ブックマーク", "📚・アーカイブ", "🤫・データ金庫"]
+            # 【変更】「🤫・データ金庫」から「🤫・データ」に修正
+            channels_to_create = ["📥・ブックマーク", "📚・アーカイブ", "🤫・データ"]
 
             created_channels = {}
             for ch_name in channels_to_create:
@@ -39,12 +38,10 @@ class AdminCog(commands.Cog):
                 else:
                     created_channels[ch_name] = existing_ch
 
-            # 3. データ金庫の権限を設定（スレッド管理の権限を追加）
-            storage_ch = created_channels.get("🤫・データ金庫")
+            # 権限とスレッド作成権限の設定
+            storage_ch = created_channels.get("🤫・データ")
             if storage_ch:
-                # 全員の閲覧を禁止
                 await storage_ch.set_permissions(guild.default_role, read_messages=False, send_messages=False)
-                # ボット自身の読み書き・スレッド操作権限を確実に許可
                 await storage_ch.set_permissions(
                     guild.me, 
                     read_messages=True, 
@@ -53,9 +50,8 @@ class AdminCog(commands.Cog):
                     manage_threads=True,
                     create_private_threads=True
                 )
-                print("🔒 データ金庫の非公開化およびスレッド権限設定が完了しました。")
+                print("🔒 データチャンネルの非公開化およびスレッド権限設定が完了しました。")
 
-            # 4. CommandsCogへのチャンネルID再読み込み通知
             commands_cog = self.bot.get_cog("CommandsCog")
             if commands_cog and hasattr(commands_cog, "load_channel_ids"):
                 success = commands_cog.load_channel_ids(guild)
@@ -74,7 +70,7 @@ class AdminCog(commands.Cog):
                     "| --- | --- |\n"
                     "| `📥・ブックマーク` | URLを貼ると自動保存用メニューが出ます |\n"
                     "| `📚・アーカイブ` | アーカイブ閲覧時に利用されます |\n"
-                    "| `🤫・データ金庫` | ユーザー別の**プライベートスレッド**が裏で自動生成・保管されます |\n\n"
+                    "| `🤫・データ` | ユーザー別の**プライベートスレッド**が裏で自動生成・保管されます |\n\n"
                     "※スラッシュコマンド一覧が正しく反映されない場合は、続けて `/sync` コマンドを実行してください。"
                 )
             )
