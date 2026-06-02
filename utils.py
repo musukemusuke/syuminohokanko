@@ -103,7 +103,6 @@ async def build_archive_embed(bot, channel_id: int, user_id: int, display_name: 
 
 async def search_archive_data(bot, channel_id: int, user_id: int, keyword: str):
     storage_channel = bot.get_channel(channel_id)
-    # 検索キーワードの前後のスペースを消し、小文字に統一
     search_keyword = keyword.strip().lower()
     
     embed = discord.Embed(title=f'🔍 「{keyword}」の検索結果', color=0xd4af37)
@@ -118,28 +117,25 @@ async def search_archive_data(bot, channel_id: int, user_id: int, keyword: str):
     try:
         async for msg in storage_channel.history(limit=1500):
             content = msg.content.strip()
-            # FOLDER（URL保存ログ）と NEW_FOLDER（フォルダ作成ログ）の両方を検索対象にする
             if "FOLDER" not in content and "NEW_FOLDER" not in content:
                 continue
 
             parsed = _parse_log(content)
             
-            # ログの種類に応じてフォルダ名を取得
             f_name = parsed.get("FOLDER") or parsed.get("NEW_FOLDER")
             u_id = parsed.get("USER")
             link = parsed.get("LINK")
 
-            # IDの比較を確実に行う（型エラー防止のため両方文字列にする）
             if not u_id or str(u_id) != str(user_id) or not f_name:
                 continue
 
-            # フォルダ名とリンクもスペースを除去し、小文字にして部分一致判定
             clean_f_name = f_name.strip().lower()
             clean_link = link.strip().lower() if link else ""
 
             if search_keyword in clean_f_name or (link and search_keyword in clean_link):
+                # 【修正】フォルダ作成ログ(NEW_FOLDER)の場合は、代表リンクとして綺麗に出力する
                 if "NEW_FOLDER" in content:
-                    results.append(f"📂 **{f_name}** (空のフォルダ)\n└ {link or '代表リンクなし'}")
+                    results.append(f"📂 **{f_name}** (フォルダ)\n└ ⭐ 代表リンク: {link or 'なし'}")
                 else:
                     results.append(f"📂 **{f_name}**\n└ {link}")
                 
@@ -167,7 +163,6 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
     to_delete_bulk = []
     to_delete_single = []
     
-    # 14日制限の基準時間を計算
     now = datetime.now(timezone.utc)
     limit_time = now - timedelta(days=14)
 
