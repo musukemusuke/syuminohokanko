@@ -5,7 +5,6 @@ from discord.ext import commands
 from utils import build_archive_embed, search_archive_data, delete_category_logs, _parse_log
 from views import CategorySelectView
 
-# ====================== 状態管理 ======================
 guild_data = {}
 
 def get_guild_data(guild_id: int):
@@ -14,7 +13,7 @@ def get_guild_data(guild_id: int):
             "post_id": None,
             "archive_id": None,
             "storage_channel_id": None,
-            "folders": {}  # user_id -> [folder_names]
+            "folders": {}  
         }
     return guild_data[guild_id]
 
@@ -35,30 +34,27 @@ class CommandsCog(commands.Cog):
         data["post_id"] = discord.utils.get(cat.text_channels, name="📥・ブックマーク").id if discord.utils.get(cat.text_channels, name="📥・ブックマーク") else None
         data["archive_id"] = discord.utils.get(cat.text_channels, name="📚・アーカイブ").id if discord.utils.get(cat.text_channels, name="📚・アーカイブ") else None
         
-        storage_ch = discord.utils.get(cat.text_channels, name="🤫・データ金庫")
+        # 【変更】「🤫・データ」を正確に取得
+        storage_ch = discord.utils.get(cat.text_channels, name="🤫・データ")
         data["storage_channel_id"] = storage_ch.id if storage_ch else None
 
         return bool(data["storage_channel_id"])
 
     async def get_or_create_user_thread(self, channel: discord.TextChannel, user: discord.User) -> discord.Thread:
-        """ユーザー専用のプライベートスレッドを取得または新規作成する"""
         thread_name = f"🔒-{user.id}-{user.name}"
         
-        # 既存のアクティブなスレッドを探索
         for thread in channel.threads:
             if thread.name == thread_name:
                 return thread
                 
-        # アーカイブされたスレッドも含めて探索
         try:
             async for thread in channel.archived_threads(private=True, limit=100):
                 if thread.name == thread_name:
-                    await thread.edit(archived=False) # 再利用のために展開
+                    await thread.edit(archived=False)
                     return thread
         except Exception:
             pass
 
-        # 見つからない場合は新しくプライベートスレッドを作成
         new_thread = await channel.create_thread(
             name=thread_name,
             type=discord.ChannelType.private_thread,
@@ -67,7 +63,6 @@ class CommandsCog(commands.Cog):
         return new_thread
 
     async def sync_user_folders_from_history(self, thread: discord.Thread, user_id: int) -> list:
-        """スレッド内の過去履歴からユーザーのフォルダ一覧を自動復元する"""
         detected_folders = set()
         try:
             async for msg in thread.history(limit=1000):
@@ -81,8 +76,6 @@ class CommandsCog(commands.Cog):
         except Exception:
             pass
         return sorted(list(detected_folders))
-
-    # ====================== コマンド ======================
 
     @app_commands.command(name="category_add", description="新しくフォルダを作成します")
     @app_commands.describe(name="フォルダ名", url="フォルダの代表となるURL")
@@ -98,22 +91,18 @@ class CommandsCog(commands.Cog):
 
         storage_channel = self.bot.get_channel(data["storage_channel_id"])
         if not storage_channel:
-            return await interaction.followup.send("❌ データ金庫が見つかりません。\n`/setup` を実行してください。", ephemeral=True)
+            return await interaction.followup.send("❌ データチャンネルが見つかりません。\n`/setup` を実行してください。", ephemeral=True)
 
-        # ユーザー専用プライベートスレッドの取得/作成
         target_thread = await self.get_or_create_user_thread(storage_channel, interaction.user)
         user_id = interaction.user.id
         
-        # スレッド履歴から同期
         data["folders"][user_id] = await self.sync_user_folders_from_history(target_thread, user_id)
 
         if name not in data["folders"][user_id]:
             data["folders"][user_id].append(name)
             data["folders"][user_id].sort()
 
-        # スレッドに向けてデータを送信
         await target_thread.send(f"NEW_FOLDER:{name}\nUSER:{user_id}\nLINK:{url}")
-
         await interaction.followup.send(f"✅ フォルダ「**{name}**」を作成しました！", ephemeral=True)
 
     @app_commands.command(name="category_delete", description="フォルダと中身をすべて削除します")
@@ -127,11 +116,10 @@ class CommandsCog(commands.Cog):
 
         storage_channel = self.bot.get_channel(data["storage_channel_id"])
         if not storage_channel:
-            return await interaction.followup.send("❌ データ金庫が見つかりません。", ephemeral=True)
+            return await interaction.followup.send("❌ データチャンネルが見つかりません。", ephemeral=True)
 
         target_thread = await self.get_or_create_user_thread(storage_channel, interaction.user)
 
-        # チャンネルではなくスレッドオブジェクトをそのまま渡してログを削除
         if await delete_category_logs(self.bot, target_thread, interaction.user.id, name):
             data["folders"][interaction.user.id] = await self.sync_user_folders_from_history(target_thread, interaction.user.id)
             await interaction.followup.send(f"🗑️ フォルダ「**{name}**」とその中身を完全に削除しました。", ephemeral=True)
@@ -148,7 +136,7 @@ class CommandsCog(commands.Cog):
 
         storage_channel = self.bot.get_channel(data["storage_channel_id"])
         if not storage_channel:
-            return await interaction.followup.send("❌ データ金庫が見つかりません。", ephemeral=True)
+            return await interaction.followup.send("❌ データチャンネルが見つかりません。", ephemeral=True)
 
         target_thread = await self.get_or_create_user_thread(storage_channel, interaction.user)
 
@@ -172,7 +160,7 @@ class CommandsCog(commands.Cog):
 
         storage_channel = self.bot.get_channel(data["storage_channel_id"])
         if not storage_channel:
-            return await interaction.followup.send("❌ データ金庫が見つかりません。", ephemeral=True)
+            return await interaction.followup.send("❌ データチャンネルが見つかりません。", ephemeral=True)
 
         target_thread = await self.get_or_create_user_thread(storage_channel, interaction.user)
 
