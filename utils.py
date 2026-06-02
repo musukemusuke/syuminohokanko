@@ -17,7 +17,7 @@ def _parse_log(content: str) -> Dict[str, str]:
         key = key.strip()
         value = value.strip()
 
-        # 余計な引用符・括弧を除去
+        # 余計な引用符・括弧・非表示の空白文字を除去
         for c in ['"', "'", "[", "]", " ", "　"]:
             if value.startswith(c) and value.endswith(c):
                 value = value[1:-1].strip()
@@ -103,6 +103,7 @@ async def build_archive_embed(bot, channel_id: int, user_id: int, display_name: 
 
 async def search_archive_data(bot, channel_id: int, user_id: int, keyword: str):
     storage_channel = bot.get_channel(channel_id)
+    # 検索キーワードの前後のスペースを消し、小文字に統一
     search_keyword = keyword.strip().lower()
     
     embed = discord.Embed(title=f'🔍 「{keyword}」の検索結果', color=0xd4af37)
@@ -117,22 +118,31 @@ async def search_archive_data(bot, channel_id: int, user_id: int, keyword: str):
     try:
         async for msg in storage_channel.history(limit=1500):
             content = msg.content.strip()
-            if "FOLDER" not in content:
+            # FOLDER（URL保存ログ）と NEW_FOLDER（フォルダ作成ログ）の両方を検索対象にする
+            if "FOLDER" not in content and "NEW_FOLDER" not in content:
                 continue
 
             parsed = _parse_log(content)
-            f_name = parsed.get("FOLDER")
+            
+            # ログの種類に応じてフォルダ名を取得
+            f_name = parsed.get("FOLDER") or parsed.get("NEW_FOLDER")
             u_id = parsed.get("USER")
             link = parsed.get("LINK")
 
-            if not u_id or str(u_id) != str(user_id) or not f_name or not link:
+            # IDの比較を確実に行う（型エラー防止のため両方文字列にする）
+            if not u_id or str(u_id) != str(user_id) or not f_name:
                 continue
 
+            # フォルダ名とリンクもスペースを除去し、小文字にして部分一致判定
             clean_f_name = f_name.strip().lower()
-            clean_link = link.strip().lower()
+            clean_link = link.strip().lower() if link else ""
 
-            if search_keyword in clean_f_name or search_keyword in clean_link:
-                results.append(f"📂 **{f_name}**\n└ {link}")
+            if search_keyword in clean_f_name or (link and search_keyword in clean_link):
+                if "NEW_FOLDER" in content:
+                    results.append(f"📂 **{f_name}** (空のフォルダ)\n└ {link or '代表リンクなし'}")
+                else:
+                    results.append(f"📂 **{f_name}**\n└ {link}")
+                
                 count += 1
                 if count >= 20:
                     break
@@ -168,7 +178,6 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
             u_id = parsed.get("USER")
 
             if f_name == folder_name and u_id and int(u_id) == user_id:
-                # 14日以内かそれ以上前かで削除処理を分岐
                 if msg.created_at > limit_time:
                     to_delete_bulk.append(msg)
                 else:
@@ -177,7 +186,6 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
         if not to_delete_bulk and not to_delete_single:
             return False
 
-        # 14日以内のメッセージを一括削除
         if to_delete_bulk:
             for i in range(0, len(to_delete_bulk), 100):
                 batch = to_delete_bulk[i:i + 100]
@@ -187,7 +195,6 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
                     await storage_channel.delete_messages(batch)
                 await asyncio.sleep(0.3)
 
-        # 14日以上前のメッセージを1件ずつ削除
         if to_delete_single:
             for msg in to_delete_single:
                 try:
