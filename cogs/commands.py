@@ -36,7 +36,7 @@ class CommandsCog(commands.Cog):
         data["post_id"] = discord.utils.get(cat.text_channels, name="📥・ブックマーク").id if discord.utils.get(cat.text_channels, name="📥・ブックマーク") else None
         data["archive_id"] = discord.utils.get(cat.text_channels, name="📚・アーカイブ").id if discord.utils.get(cat.text_channels, name="📚・アーカイブ") else None
         
-        # 安定運用のために非公開テキストチャンネルを取得
+        # 非公開テキストチャンネルを安全に取得
         storage_ch = (
             discord.utils.get(cat.text_channels, name="🤫・データ金庫") or 
             discord.utils.get(cat.voice_channels, name="🤫・データ金庫")
@@ -81,14 +81,14 @@ class CommandsCog(commands.Cog):
 
         user_id = interaction.user.id
         
-        # 過去ログからフォルダ情報を最新に同期
+        # 過去ログ履歴から最新状態を同期
         data["folders"][user_id] = await self.sync_user_folders_from_history(storage_channel, user_id)
 
         if name not in data["folders"][user_id]:
             data["folders"][user_id].append(name)
             data["folders"][user_id].sort()
 
-        # パースがブレないように確実なテキスト形式で保存
+        # パースズレを完璧に防ぐためキーに絵文字を入れずにテキスト送信
         await storage_channel.send(f"NEW_FOLDER:{name}\nUSER:{user_id}\nLINK:{url}")
 
         await interaction.followup.send(f"✅ フォルダ「**{name}**」を作成しました！", ephemeral=True)
