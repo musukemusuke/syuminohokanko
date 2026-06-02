@@ -35,10 +35,8 @@ class ListenerCog(commands.Cog):
         if not storage_channel:
             return
 
-        # ユーザー専用プライベートスレッドの読み込み
         target_thread = await commands_cog.get_or_create_user_thread(storage_channel, message.author)
 
-        # スレッドの履歴からバックグラウンドでフォルダを最新に同期
         folders = await commands_cog.sync_user_folders_from_history(target_thread, message.author.id)
         data["folders"][message.author.id] = folders
 
@@ -53,7 +51,6 @@ class ListenerCog(commands.Cog):
         except discord.NotFound:
             pass
 
-        # スレッドオブジェクト（target_thread）を第4引数へ安全に引き渡し
         view = CategorySelectView(
             categories=list(reversed(folders)), 
             original_urls=[url_match.group(0)], 
