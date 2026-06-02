@@ -1,7 +1,7 @@
 import discord
 import traceback
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List, Union
 from datetime import datetime, timedelta, timezone
 
 # ====================== 共通パーサー ======================
@@ -12,14 +12,11 @@ def _parse_log(content: str) -> Dict[str, str]:
         line = line.strip()
         if ":" not in line:
             continue
-        # URL内の「:」を巻き込まないよう、最初の「:」だけで分割
         key, value = line.split(":", 1)
         
-        # 前後にある余計な空白文字や特殊文字を完全に排除する
         key = key.strip().replace(" ", "").replace("　", "")
         value = value.strip()
 
-        # 余計な引用符・括弧・非表示の空白文字をループで徹底的に除去
         for c in ['"', "'", "[", "]", " ", "　"]:
             while value.startswith(c) and value.endswith(c) and len(value) > 1:
                 value = value[1:-1].strip()
@@ -29,23 +26,21 @@ def _parse_log(content: str) -> Dict[str, str]:
 
 
 # ====================== メイン関数 ======================
-async def build_archive_embed(bot, channel_id: int, user_id: int, display_name: str):
-    storage_channel = bot.get_channel(channel_id)
-    if not storage_channel:
+async def build_archive_embed(bot, target_loc: Union[discord.TextChannel, discord.Thread], user_id: int, display_name: str):
+    if not target_loc:
         return None
 
     folders: List[str] = []
-    folder_rep: Dict[str, str] = {}      # フォルダ作成時の代表URL
-    archive_data: Dict[str, List[str]] = {}  # {folder: [urls...]}
+    folder_rep: Dict[str, str] = {}      
+    archive_data: Dict[str, List[str]] = {}  
 
     try:
-        async for msg in storage_channel.history(limit=1500):
+        async for msg in target_loc.history(limit=1500):
             content = msg.content.strip()
             if not content:
                 continue
             parsed = _parse_log(content)
 
-            # 新規フォルダ作成
             if "NEW_FOLDER" in content:
                 f_name = parsed.get("NEW_FOLDER")
                 u_id = parsed.get("USER")
@@ -57,7 +52,6 @@ async def build_archive_embed(bot, channel_id: int, user_id: int, display_name: 
                         folder_rep[f_name] = link
                     archive_data.setdefault(f_name, [])
 
-            # 実際の保存データ
             elif "FOLDER" in content:
                 f_name = parsed.get("FOLDER")
                 u_id = parsed.get("USER")
@@ -91,10 +85,8 @@ async def build_archive_embed(bot, channel_id: int, user_id: int, display_name: 
                 lines.append("")
 
         lines.extend(urls)
-
         value = "\n".join(lines) if lines else "（まだ何も保存されていません）"
         
-        # Embed制限対策
         if len(value) > 1000:
             value = value[:997] + "..."
 
@@ -103,27 +95,22 @@ async def build_archive_embed(bot, channel_id: int, user_id: int, display_name: 
     return embed
 
 
-async def search_archive_data(bot, channel_id: int, user_id: int, keyword: str):
-    storage_channel = bot.get_channel(channel_id)
+async def search_archive_data(bot, target_loc: Union[discord.TextChannel, discord.Thread], user_id: int, keyword: str):
+    if not target_loc:
+        return discord.Embed(description="❌ 対象のスレッドが見つかりません。", color=0x555555)
+        
     search_keyword = keyword.strip().lower()
-    
     embed = discord.Embed(title=f'🔍 「{keyword}」の検索結果', color=0xd4af37)
-
-    if not storage_channel:
-        embed.description = "❌ データ金庫にアクセスできません。"
-        return embed
-
     results = []
     count = 0
 
     try:
-        async for msg in storage_channel.history(limit=1500):
+        async for msg in target_loc.history(limit=1500):
             content = msg.content.strip()
             if "FOLDER" not in content and "NEW_FOLDER" not in content:
                 continue
 
             parsed = _parse_log(content)
-            
             f_name = parsed.get("FOLDER") or parsed.get("NEW_FOLDER")
             u_id = parsed.get("USER")
             link = parsed.get("LINK")
@@ -156,22 +143,19 @@ async def search_archive_data(bot, channel_id: int, user_id: int, keyword: str):
     return embed
 
 
-async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: str) -> bool:
-    storage_channel = bot.get_channel(channel_id)
-    if not storage_channel:
+async def delete_category_logs(bot, target_loc: Union[discord.TextChannel, discord.Thread], user_id: int, folder_name: str) -> bool:
+    if not target_loc:
         return False
 
     to_delete_bulk = []
     to_delete_single = []
     
-    # 14日制限の基準時間を計算
     now = datetime.now(timezone.utc)
     limit_time = now - timedelta(days=14)
-
     target_folder = folder_name.strip()
 
     try:
-        async for msg in storage_channel.history(limit=1500):
+        async for msg in target_loc.history(limit=1500):
             content = msg.content.strip()
             if "NEW_FOLDER" not in content and "FOLDER" not in content:
                 continue
@@ -189,22 +173,20 @@ async def delete_category_logs(bot, channel_id: int, user_id: int, folder_name: 
         if not to_delete_bulk and not to_delete_single:
             return False
 
-        # 【修正】14日以内のメッセージを一括削除（リストのインデックスバグを修正）
         if to_delete_bulk:
-            for i in range(0, len(to_delete_bulk), 100):
-                batch = to_delete_bulk[i:i + 100]
-                if len(batch) == 1:
-                    await batch[0].delete()  # batch から最初の要素を取り出すように修正
-                else:
-                    await storage_channel.delete_messages(batch)
-                await asyncio.sleep(0.3)
+            # スレッドには delete_messages メソッドがないため、一律で高速に1件ずつ非同期処理を回す
+            for msg in to_delete_bulk:
+                try:
+                    await msg.delete()
+                    await asyncio.sleep(0.1)
+                except discord.NotFound:
+                    pass
 
-        # 14日以上前のメッセージを1件ずつ削除
         if to_delete_single:
             for msg in to_delete_single:
                 try:
                     await msg.delete()
-                    await asyncio.sleep(0.2)
+                    await asyncio.sleep(0.1)
                 except discord.NotFound:
                     pass
 
