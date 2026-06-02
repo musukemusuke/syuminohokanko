@@ -9,7 +9,7 @@ class CategorySelect(discord.ui.Select):
         categories: List[str],
         original_urls: List[str],
         post_id: int,
-        channel_id: int,  # 変数名を vc_id から channel_id に変更
+        channel_id: int,
         folder_url_map: Optional[Dict[str, List[str]]] = None,
     ):
         self.original_urls = original_urls
@@ -40,7 +40,6 @@ class CategorySelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        # メッセージの更新と追加応答を両方行うため、ここでは defer せず後で処理します
         try:
             storage_channel = interaction.client.get_channel(self.channel_id)
             if not storage_channel:
@@ -48,7 +47,7 @@ class CategorySelect(discord.ui.Select):
 
             selected = self.values[0]
 
-            # 【修正】パース関数（_parse_log）が正しく読める形式（キーに絵文字を入れない）で送信
+            # 共通パース関数が正確に読み込めるフォーマット（キーから絵文字を排除）で送信
             for link in self.original_urls:
                 await storage_channel.send(
                     f"FOLDER:{selected}\n"
@@ -61,19 +60,18 @@ class CategorySelect(discord.ui.Select):
                 color=0xd4af37
             )
             
-            # 【修正】Viewのコンポーネントを無効化
+            # Viewのコンポーネントを無効化
             self.view.stop()
             for item in self.view.children:
                 if hasattr(item, "disabled"):
                     item.disabled = True
 
-            # 【重要】元のメッセージのViewを更新してグレーアウトさせつつ、ユーザーへ保存完了を通知
+            # 元メッセージのセレクトメニューをグレーアウトして二重送信を防止
             await interaction.response.edit_message(view=self.view)
             await interaction.followup.send(embed=embed, ephemeral=True)
 
         except Exception:
             traceback.print_exc()
-            # エラー時も安全に応答
             if not interaction.response.is_done():
                 await interaction.response.send_message("❌ 保存中にエラーが発生しました。", ephemeral=True)
             else:
@@ -90,23 +88,15 @@ class CategorySelectView(discord.ui.View):
         folder_url_map: Optional[Dict[str, List[str]]] = None,
     ):
         super().__init__(timeout=120)
-        self.message: Optional[discord.Message] = None  # タイムアウト時の編集用に保持
+        self.message: Optional[discord.Message] = None  # タイムアウト時の自動グレーアウト編集用
         self.add_item(CategorySelect(categories, original_urls, post_id, channel_id, folder_url_map))
 
     async def on_timeout(self):
         for item in self.children:
             if hasattr(item, "disabled"):
                 item.disabled = True
-        # もし呼び出し元で view.message = await ctx.send(...) のようにメッセージを渡していれば、タイムアウト時に自動でグレーアウト
         if self.message:
             try:
                 await self.message.edit(view=self)
             except Exception:
                 pass
-
-
-### 🔄 連動する読み込み側（_parse_log用）の新規フォルダ作成（NEW_FOLDER）時の推奨フォーマット
-# もし別ファイルで「新規フォルダ作成」のログを送信している処理がある場合は、
-# 以下のように絵文字をコロンの左側に含めないように統一してください。
-# 例：
-# f"NEW_FOLDER:{folder_name}\nUSER:{user_id}\nLINK:{rep_link}"
