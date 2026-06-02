@@ -3,7 +3,6 @@ import re
 import discord
 from discord.ext import commands
 
-# 状態管理・復元関数を commands.py からインポート
 from cogs.commands import get_guild_data
 from views import CategorySelectView
 
@@ -28,7 +27,6 @@ class ListenerCog(commands.Cog):
         if message.channel.id != data["post_id"]:
             return
 
-        # URLの自動検出
         url_match = re.search(r"https?://[^\s]+", message.content)
         if not url_match:
             return
@@ -37,8 +35,11 @@ class ListenerCog(commands.Cog):
         if not storage_channel:
             return
 
-        # 再起動対策：履歴からフォルダ情報をバックグラウンドで強制同期
-        folders = await commands_cog.sync_user_folders_from_history(storage_channel, message.author.id)
+        # ユーザー専用プライベートスレッドの読み込み
+        target_thread = await commands_cog.get_or_create_user_thread(storage_channel, message.author)
+
+        # スレッドの履歴からバックグラウンドでフォルダを最新に同期
+        folders = await commands_cog.sync_user_folders_from_history(target_thread, message.author.id)
         data["folders"][message.author.id] = folders
 
         if not folders:
@@ -52,12 +53,12 @@ class ListenerCog(commands.Cog):
         except discord.NotFound:
             pass
 
-        # 型不一致や変数指定バグを修正した引数の受け渡し
+        # スレッドオブジェクト（target_thread）を第4引数へ安全に引き渡し
         view = CategorySelectView(
             categories=list(reversed(folders)), 
             original_urls=[url_match.group(0)], 
             post_id=data["post_id"], 
-            channel_id=data["storage_channel_id"]
+            target_dest=target_thread
         )
         
         embed = discord.Embed(
@@ -67,7 +68,6 @@ class ListenerCog(commands.Cog):
         )
         
         sent_message = await message.channel.send(embed=embed, view=view, delete_after=90)
-        # タイムアウト時に正常に無効化（グレーアウト）を反映させるためメッセージ情報を記録
         view.message = sent_message
 
 async def setup(bot):
