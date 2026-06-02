@@ -19,7 +19,7 @@ async def on_ready():
     print(f"✅ ログイン成功: {bot.user} ({bot.user.id})")
     print(f"📊 参加サーバー: {len(bot.guilds)} サーバー")
     
-    # ログイン完了後（サーバー情報読み込み後）に同期を実行する
+    # コマンドの増殖・重複を完全に防止するクリーンな同期を実行
     if len(bot.guilds) <= 5:
         await sync_all_commands()
 
@@ -51,7 +51,7 @@ async def sync_all_commands():
 
 async def main():
     async with bot:
-        # 1. 拡張機能（Cog）をロード
+        # 拡張機能（Cog）をロード
         await load_cogs()
 
         # トークンチェックを最初に行う
@@ -60,7 +60,6 @@ async def main():
             print("❌ DISCORD_BOT_TOKEN が設定されていません")
             return
             
-        # 2. Discordに接続（ログイン）
         await bot.start(token)
 
 
