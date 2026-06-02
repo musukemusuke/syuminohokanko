@@ -4,9 +4,7 @@ import asyncio
 from typing import Dict, List, Union
 from datetime import datetime, timedelta, timezone
 
-# ====================== 共通パーサー ======================
 def _parse_log(content: str) -> Dict[str, str]:
-    """ログデータを安全にパースする共通関数"""
     data = {}
     for line in content.split("\n"):
         line = line.strip()
@@ -25,7 +23,6 @@ def _parse_log(content: str) -> Dict[str, str]:
     return data
 
 
-# ====================== メイン関数 ======================
 async def build_archive_embed(bot, target_loc: Union[discord.TextChannel, discord.Thread], user_id: int, display_name: str):
     if not target_loc:
         return None
@@ -174,7 +171,6 @@ async def delete_category_logs(bot, target_loc: Union[discord.TextChannel, disco
             return False
 
         if to_delete_bulk:
-            # スレッドには delete_messages メソッドがないため、一律で高速に1件ずつ非同期処理を回す
             for msg in to_delete_bulk:
                 try:
                     await msg.delete()
