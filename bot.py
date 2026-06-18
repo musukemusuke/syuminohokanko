@@ -20,7 +20,7 @@ async def on_ready():
     print(f"📊 参加サーバー: {len(bot.guilds)} サーバー")
 
     # アクティビティ（ステータス）を設定
-    await bot.change_presence(activity=discord.Game(name="作:@darker_days (musuke)"))
+    await bot.change_presence(activity=discord.Game(name="作:@musuke.exe (musuke)"))
     
     # コマンドの増殖・重複を完全に防止するクリーンな同期を実行
     if len(bot.guilds) <= 5:
