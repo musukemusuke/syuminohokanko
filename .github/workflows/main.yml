@@ -81,6 +81,7 @@ jobs:
             sleep 10
           fi
           sleep 10
+        done
     
     - name: Show final logs
       if: always()
