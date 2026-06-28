@@ -1,39 +1,93 @@
-name: Run Discord Bot
+name: Discord Bot
 
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
   schedule:
-    # 3時間ごとに自動起動してバトンを繋ぐ（6時間制限の対策）
-    - cron: '0 */3 * * *'
-  workflow_dispatch: # 手動で起動できるボタンを追加
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    - cron: '*/5 * * * *'  # 5分ごとにチェック
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    
+    concurrency: 
+      group: bot-${{ github.ref }}
+      cancel-in-progress: true
+    
     steps:
-    # ★Node 24環境に完全ネイティブ対応した、正真正銘の最新メジャーバージョン「@v5」を指定
-    - name: Checkout code safely
-      uses: actions/checkout@v5
-
-    # ★Node 24環境に完全ネイティブ対応した、公式Python部品の最新メジャーバージョン「@v6」を指定
-    - name: Set up Python safely
-      uses: actions/setup-python@v6
+    - uses: actions/checkout@v4
       with:
-        python-version: '3.11'
-
-    # ボットに必要な部品のインストール
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: Set timezone to Japan
+      run: |
+        sudo timedatectl set-timezone Asia/Tokyo
+        date
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+    
     - name: Install dependencies
       run: |
-        pip install discord.py
-
-    # 6時間制限にかかる前に、2時間45分で安全に自己終了させる命令
-    - name: Start Bot
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        sudo apt-get update && sudo apt-get install -y jq
+    
+    - name: Check if bot is running
+      id: check_bot
       env:
         DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
       run: |
-        python bot.py
+        RUNNING_JOBS=$(curl -s -H "Authorization: token ${{ github.token }}" \
+          "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=in_progress" | \
+          jq -r '.workflow_runs[] | select(.id != ${{ github.run_id }}) | .id')
+        
+        if [ -z "$RUNNING_JOBS" ]; then
+          echo "ボットが実行されていないため、起動します"
+          echo "RUN_BOT=true" >> $GITHUB_ENV
+        else
+          echo "ボットは既に実行中です"
+          echo "RUN_BOT=false" >> $GITHUB_ENV
+        fi
+    
+    - name: Run bot
+      if: env.RUN_BOT == 'true'
+      env:
+        DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      run: |
+        pkill -f "python.*bot.py" || true
+        
+        mkdir -p logs temp
+        nohup python bot.py > logs/bot.log 2>&1 &
+        echo $! > temp/bot.pid
+        
+        if ! ps -p $(cat temp/bot.pid) > /dev/null; then
+          echo "ボットの起動に失敗しました"
+          cat logs/bot.log
+          exit 1
+        fi
+        
+        echo "ボットが正常に起動しました"
+        
+        while true; do
+          if ! ps -p $(cat temp/bot.pid) > /dev/null; then
+            echo "ボットが終了しました。再起動します..."
+            nohup python bot.py > logs/bot.log 2>&1 &
+            echo $! > temp/bot.pid
+            sleep 10
+          fi
+          sleep 10
+    
+    - name: Show final logs
+      if: always()
+      run: |
+        if [ -f "logs/bot.log" ]; then
+          echo "=== エラーログ ==="
+          grep -E "(ERROR|WARNING)" logs/bot.log || echo "エラーログはありません"
+          echo "=== 最終20行 ==="
+          tail -n 20 logs/bot.log
+        fi
