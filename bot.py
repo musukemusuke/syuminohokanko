@@ -24,12 +24,19 @@ async def on_ready():
     print("\n=== 参加サーバー一覧 ===")
     for i, guild in enumerate(bot.guilds, 1):
         print(f"{i}. {guild.name} (ID: {guild.id}) - メンバー数: {guild.member_count}")
-        # ボット以外のメンバー名を一覧表示
+        # ボット以外の人間メンバーとbotメンバーを分けて一覧表示
         human_members = [member.name for member in guild.members if not member.bot]
+        bot_members = [member.name for member in guild.members if member.bot]
+        
         if human_members:
-            print(f"   参加メンバー: {', '.join(human_members)}")
+            print(f"   人間メンバー: {', '.join(human_members)}")
         else:
-            print("   参加メンバー: 人間のメンバーはいません")
+            print("   人間メンバー: いません")
+            
+        if bot_members:
+            print(f"   Botメンバー: {', '.join(bot_members)}")
+        else:
+            print("   Botメンバー: いません")
     print("======================\n")
 
     # アクティビティ（ステータス）を設定
