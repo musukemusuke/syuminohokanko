@@ -19,11 +19,11 @@ async def on_ready():
     print(f"✅ ログイン成功: {bot.user} ({bot.user.id})")
     print(f"📊 参加サーバー数: {len(bot.guilds)} サーバー")
     
-    # 参加しているサーバーの一覧を表示（GitHub Actionsのログで確認できるように）
-    print("\n📋 参加サーバー一覧:")
-    for guild in bot.guilds:
-        print(f"  - {guild.name} (ID: {guild.id})")
-    print("\n")
+    # 参加している全サーバーの名前とIDを一覧表示（GitHub Actionsログでも確認可能）
+    print("\n=== 参加サーバー一覧 ===")
+    for i, guild in enumerate(bot.guilds, 1):
+        print(f"{i}. {guild.name} (ID: {guild.id}) - メンバー数: {guild.member_count}")
+    print("======================\n")
 
     # アクティビティ（ステータス）を設定
     await bot.change_presence(activity=discord.Game(name="作:musuke"))
