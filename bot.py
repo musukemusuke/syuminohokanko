@@ -17,7 +17,13 @@ bot = commands.Bot(
 @bot.event
 async def on_ready():
     print(f"✅ ログイン成功: {bot.user} ({bot.user.id})")
-    print(f"📊 参加サーバー: {len(bot.guilds)} サーバー")
+    print(f"📊 参加サーバー数: {len(bot.guilds)} サーバー")
+    
+    # 参加しているサーバーの一覧を表示（GitHub Actionsのログで確認できるように）
+    print("\n📋 参加サーバー一覧:")
+    for guild in bot.guilds:
+        print(f"  - {guild.name} (ID: {guild.id})")
+    print("\n")
 
     # アクティビティ（ステータス）を設定
     await bot.change_presence(activity=discord.Game(name="作:musuke"))
