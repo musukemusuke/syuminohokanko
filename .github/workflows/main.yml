@@ -35,5 +35,6 @@ jobs:
     - name: Start Bot
       env:
         DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        PYTHONUNBUFFERED: 1 # Pythonの出力バッファリングを無効化してログをリアルタイム表示
       run: |
         python bot.py
