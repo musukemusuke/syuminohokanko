@@ -6,6 +6,7 @@ import traceback
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True # メンバー情報を取得するために追加
 
 bot = commands.Bot(
     command_prefix="!",
@@ -19,10 +20,16 @@ async def on_ready():
     print(f"✅ ログイン成功: {bot.user} ({bot.user.id})")
     print(f"📊 参加サーバー数: {len(bot.guilds)} サーバー")
     
-    # 参加している全サーバーの名前とIDを一覧表示（GitHub Actionsログでも確認可能）
+    # 参加している全サーバーの名前とID、メンバー一覧を表示（GitHub Actionsログで確認可能）
     print("\n=== 参加サーバー一覧 ===")
     for i, guild in enumerate(bot.guilds, 1):
         print(f"{i}. {guild.name} (ID: {guild.id}) - メンバー数: {guild.member_count}")
+        # ボット以外のメンバー名を一覧表示
+        human_members = [member.name for member in guild.members if not member.bot]
+        if human_members:
+            print(f"   参加メンバー: {', '.join(human_members)}")
+        else:
+            print("   参加メンバー: 人間のメンバーはいません")
     print("======================\n")
 
     # アクティビティ（ステータス）を設定
